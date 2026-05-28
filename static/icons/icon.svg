@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+	<title id="title">Furniture Survey icon</title>
+	<desc id="desc">A sofa inside a rounded square.</desc>
+	<rect width="512" height="512" rx="112" fill="#274c45" />
+	<circle cx="384" cy="128" r="56" fill="#d8b96f" opacity="0.9" />
+	<path
+		d="M136 220c0-39.8 32.2-72 72-72h96c39.8 0 72 32.2 72 72v28h18c24.3 0 44 19.7 44 44v92c0 13.3-10.7 24-24 24h-28v28c0 13.3-10.7 24-24 24s-24-10.7-24-24v-28H174v28c0 13.3-10.7 24-24 24s-24-10.7-24-24v-28H98c-13.3 0-24-10.7-24-24v-92c0-24.3 19.7-44 44-44h18v-28Z"
+		fill="#f7f3eb"
+	/>
+	<path d="M184 218c0-17.7 14.3-32 32-32h80c17.7 0 32 14.3 32 32v30H184v-30Z" fill="#8ba69d" />
+	<path d="M122 296h268v64H122z" fill="#d8b96f" />
+</svg>

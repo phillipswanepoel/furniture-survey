@@ -12,8 +12,7 @@
 		getProjects,
 		saveAppSettings
 	} from '$lib/projectStorage';
-	import { applyThemePreference, isThemePreference } from '$lib/theme';
-	import type { AppSettings, Project, ThemePreference } from '$lib/types';
+	import type { AppSettings, Project } from '$lib/types';
 
 	let projects = $state<Project[]>([]);
 	let projectName = $state('');
@@ -26,7 +25,6 @@
 	let settingsStatusMessage = $state('');
 	let settingsErrorMessage = $state('');
 	let appSettings = $state<AppSettings>({ ...DEFAULT_APP_SETTINGS });
-	let selectedTheme = $state<ThemePreference>('system');
 	let newPasscode = $state('');
 	let isSavingSettings = $state(false);
 	let projectMeta = $state<Record<string, { itemCount: number; reminder: BackupReminder | null }>>(
@@ -73,8 +71,6 @@
 
 		try {
 			appSettings = await getAppSettings();
-			selectedTheme = appSettings.theme;
-			applyThemePreference(appSettings.theme);
 		} catch (error) {
 			console.error(error);
 			settingsErrorMessage = 'Could not load settings.';
@@ -83,14 +79,6 @@
 
 	function notifySettingsChanged() {
 		window.dispatchEvent(new CustomEvent('furniture-survey:settings-changed'));
-	}
-
-	async function handleThemeChange(event: Event) {
-		const select = event.currentTarget;
-		if (!(select instanceof HTMLSelectElement) || !isThemePreference(select.value)) return;
-
-		selectedTheme = select.value;
-		await saveSettings({ ...appSettings, theme: selectedTheme }, 'Theme saved.');
 	}
 
 	async function handleSetPasscode(event: SubmitEvent) {
@@ -140,8 +128,6 @@
 
 		try {
 			appSettings = await saveAppSettings(nextSettings);
-			selectedTheme = appSettings.theme;
-			applyThemePreference(appSettings.theme);
 			settingsStatusMessage = message;
 			notifySettingsChanged();
 			return true;
@@ -252,19 +238,10 @@
 <section class="card settings-card" aria-labelledby="settings-heading">
 	<div>
 		<h2 id="settings-heading">Settings</h2>
-		<p class="muted">Theme and simple on-device passcode.</p>
+		<p class="muted">Simple on-device passcode.</p>
 	</div>
 
 	<div class="settings-grid">
-		<label class="field" for="theme-select">
-			<span>Theme</span>
-			<select id="theme-select" bind:value={selectedTheme} onchange={handleThemeChange}>
-				<option value="system">System</option>
-				<option value="light">Light</option>
-				<option value="dark">Dark</option>
-			</select>
-		</label>
-
 		<form class="passcode-form" onsubmit={handleSetPasscode}>
 			<label for="new-passcode"
 				>{appSettings.passcodeEnabled ? 'Change passcode' : 'Set passcode'}</label
@@ -395,7 +372,7 @@
 		align-items: center;
 		gap: 1rem;
 		margin: 1.35rem 0 0.9rem;
-		background: rgb(255 254 250 / 0.78);
+		background: var(--color-surface);
 	}
 
 	.settings-card {
@@ -409,13 +386,11 @@
 	}
 
 	.settings-grid,
-	.field,
 	.passcode-form {
 		display: grid;
 		gap: 0.7rem;
 	}
 
-	.field span,
 	.passcode-form label {
 		font-size: 0.9rem;
 		font-weight: 650;
@@ -493,11 +468,11 @@
 	}
 
 	.backup-reminder {
-		border: 1px solid color-mix(in srgb, var(--color-danger) 18%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
 		border-radius: 1rem;
 		padding: 0.7rem;
-		background: rgb(247 223 226 / 0.62);
-		color: var(--color-danger);
+		background: var(--color-warm-soft);
+		color: var(--color-primary-strong);
 		font-size: 0.82rem;
 		font-weight: 650;
 	}

@@ -1,6 +1,5 @@
 export type DimensionUnit = 'mm' | 'cm' | 'm';
 export type ItemStatus = 'draft' | 'saved';
-export type ThemePreference = 'system' | 'light' | 'dark';
 
 export interface Project {
 	id: string;
@@ -17,7 +16,6 @@ export interface Project {
 export interface AppSettings {
 	passcodeEnabled: boolean;
 	passcodeHash: string | null;
-	theme: ThemePreference;
 }
 
 export interface Item {

@@ -6,8 +6,7 @@ export const SETTINGS_KEY = 'app';
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
 	passcodeEnabled: false,
-	passcodeHash: null,
-	theme: 'system'
+	passcodeHash: null
 };
 
 type DexieConstructorOptions = ConstructorParameters<typeof Dexie>[1];

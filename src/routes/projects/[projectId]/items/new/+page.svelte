@@ -693,7 +693,7 @@
 		display: grid;
 		gap: 0.25rem;
 		margin-bottom: 1rem;
-		background: linear-gradient(135deg, rgb(220 239 240 / 0.76), rgb(255 254 250 / 0.54));
+		background: var(--color-primary-soft);
 	}
 
 	.form-card {
@@ -717,7 +717,7 @@
 		border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
 		border-radius: 1.25rem;
 		padding: 0.85rem;
-		background: rgb(255 254 250 / 0.52);
+		background: var(--color-surface-strong);
 	}
 
 	.number-preview small {
@@ -738,7 +738,7 @@
 		border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
 		border-radius: 1.35rem;
 		padding: 0.85rem;
-		background: linear-gradient(135deg, rgb(220 239 240 / 0.58), rgb(241 224 236 / 0.42));
+		background: var(--color-primary-soft);
 	}
 
 	.photo-heading {
@@ -796,7 +796,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: 1.15rem;
 		padding: 0.55rem;
-		background: rgb(255 254 250 / 0.58);
+		background: var(--color-surface-strong);
 	}
 
 	.photo-grid img {

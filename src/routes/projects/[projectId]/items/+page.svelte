@@ -597,7 +597,7 @@
 		display: grid;
 		gap: 1rem;
 		margin-bottom: 1rem;
-		background: linear-gradient(135deg, rgb(220 239 240 / 0.76), rgb(255 254 250 / 0.54));
+		background: var(--color-primary-soft);
 	}
 
 	.draft-card strong {
@@ -688,7 +688,7 @@
 		border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
 		border-radius: 1.25rem;
 		padding: 0.85rem;
-		background: rgb(255 254 250 / 0.44);
+		background: var(--color-surface-strong);
 	}
 
 	.edit-panel summary {
@@ -725,7 +725,7 @@
 		border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
 		border-radius: 1.35rem;
 		padding: 0.85rem;
-		background: linear-gradient(135deg, rgb(220 239 240 / 0.52), rgb(241 224 236 / 0.36));
+		background: var(--color-primary-soft);
 	}
 
 	.photos-review-heading {
@@ -799,7 +799,7 @@
 		border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
 		border-radius: 1.05rem;
 		padding: 0.72rem;
-		background: rgb(255 254 250 / 0.5);
+		background: var(--color-surface-strong);
 	}
 
 	dt {

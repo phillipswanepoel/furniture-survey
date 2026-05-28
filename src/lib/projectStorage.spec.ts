@@ -104,14 +104,12 @@ describe('project storage', () => {
 	it('returns default settings and persists settings updates', async () => {
 		const settings: AppSettings = {
 			passcodeEnabled: true,
-			passcodeHash: 'hash-value',
-			theme: 'dark'
+			passcodeHash: 'hash-value'
 		};
 
 		expect(await getAppSettings(database)).toStrictEqual({
 			passcodeEnabled: false,
-			passcodeHash: null,
-			theme: 'system'
+			passcodeHash: null
 		});
 
 		await saveAppSettings(settings, database);

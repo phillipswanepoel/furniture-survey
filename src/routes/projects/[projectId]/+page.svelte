@@ -203,7 +203,7 @@
 		display: grid;
 		gap: 1rem;
 		margin-bottom: 1rem;
-		background: linear-gradient(135deg, rgb(247 223 226 / 0.76), rgb(255 254 250 / 0.54));
+		background: var(--color-warm-soft);
 	}
 
 	.backup-card h2,

@@ -39,7 +39,6 @@
 		"vitest": "^4.1.3"
 	},
 	"dependencies": {
-		"@fontsource/monaspace-argon": "^5.2.5",
 		"browser-image-compression": "^2.0.2",
 		"dexie": "^4.4.3",
 		"jszip": "^3.10.1",

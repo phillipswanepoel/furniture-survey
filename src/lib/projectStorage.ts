@@ -1,4 +1,4 @@
-import { DEFAULT_APP_SETTINGS, SETTINGS_KEY, db as defaultDb } from './db';
+import { SETTINGS_KEY, db as defaultDb } from './db';
 import type { FurnitureSurveyDatabase } from './db';
 import type { AppSettings, DimensionUnit, Project, SettingsRecord } from './types';
 
@@ -107,24 +107,34 @@ export async function countProjectItems(id: string, database: FurnitureSurveyDat
 	return database.items.where('projectId').equals(id).count();
 }
 
+export function normalizeAppSettings(
+	settings: Partial<AppSettings> | null | undefined
+): AppSettings {
+	return {
+		passcodeEnabled: Boolean(settings?.passcodeEnabled && settings.passcodeHash),
+		passcodeHash: settings?.passcodeHash ?? null
+	};
+}
+
 export async function getAppSettings(database: FurnitureSurveyDatabase = defaultDb) {
 	const record = (await database.settings.get(SETTINGS_KEY)) as
-		| SettingsRecord<AppSettings>
+		| SettingsRecord<Partial<AppSettings>>
 		| undefined;
 
-	return record?.value ?? { ...DEFAULT_APP_SETTINGS };
+	return normalizeAppSettings(record?.value);
 }
 
 export async function saveAppSettings(
 	settings: AppSettings,
 	database: FurnitureSurveyDatabase = defaultDb
 ) {
+	const normalizedSettings = normalizeAppSettings(settings);
 	const record: SettingsRecord<AppSettings> = {
 		key: SETTINGS_KEY,
-		value: settings,
+		value: normalizedSettings,
 		updatedAt: nowIso()
 	};
 
 	await database.settings.put(record);
-	return settings;
+	return normalizedSettings;
 }

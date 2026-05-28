@@ -1,6 +1,6 @@
-import { SETTINGS_KEY, db as defaultDb } from './db';
+import { db as defaultDb } from './db';
 import type { FurnitureSurveyDatabase } from './db';
-import type { AppSettings, DimensionUnit, Project, SettingsRecord } from './types';
+import type { DimensionUnit, Project } from './types';
 
 export interface CreateProjectInput {
 	name: string;
@@ -107,34 +107,3 @@ export async function countProjectItems(id: string, database: FurnitureSurveyDat
 	return database.items.where('projectId').equals(id).count();
 }
 
-export function normalizeAppSettings(
-	settings: Partial<AppSettings> | null | undefined
-): AppSettings {
-	return {
-		passcodeEnabled: Boolean(settings?.passcodeEnabled && settings.passcodeHash),
-		passcodeHash: settings?.passcodeHash ?? null
-	};
-}
-
-export async function getAppSettings(database: FurnitureSurveyDatabase = defaultDb) {
-	const record = (await database.settings.get(SETTINGS_KEY)) as
-		| SettingsRecord<Partial<AppSettings>>
-		| undefined;
-
-	return normalizeAppSettings(record?.value);
-}
-
-export async function saveAppSettings(
-	settings: AppSettings,
-	database: FurnitureSurveyDatabase = defaultDb
-) {
-	const normalizedSettings = normalizeAppSettings(settings);
-	const record: SettingsRecord<AppSettings> = {
-		key: SETTINGS_KEY,
-		value: normalizedSettings,
-		updatedAt: nowIso()
-	};
-
-	await database.settings.put(record);
-	return normalizedSettings;
-}

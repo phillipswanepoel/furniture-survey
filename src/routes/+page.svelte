@@ -2,17 +2,9 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { getBackupReminder, type BackupReminder } from '$lib/backupReminders';
-	import { DEFAULT_APP_SETTINGS } from '$lib/db';
 	import { countSavedProjectItems } from '$lib/itemStorage';
-	import { createPasscodeHash, validatePasscode } from '$lib/passcode';
-	import {
-		createProject,
-		deleteProject,
-		getAppSettings,
-		getProjects,
-		saveAppSettings
-	} from '$lib/projectStorage';
-	import type { AppSettings, Project } from '$lib/types';
+	import { createProject, deleteProject, getProjects } from '$lib/projectStorage';
+	import type { Project } from '$lib/types';
 
 	let projects = $state<Project[]>([]);
 	let projectName = $state('');
@@ -22,18 +14,12 @@
 	let exportingProjectId = $state<string | null>(null);
 	let errorMessage = $state('');
 	let statusMessage = $state('');
-	let settingsStatusMessage = $state('');
-	let settingsErrorMessage = $state('');
-	let appSettings = $state<AppSettings>({ ...DEFAULT_APP_SETTINGS });
-	let newPasscode = $state('');
-	let isSavingSettings = $state(false);
 	let projectMeta = $state<Record<string, { itemCount: number; reminder: BackupReminder | null }>>(
 		{}
 	);
 
 	onMount(() => {
 		void loadProjects();
-		void loadSettings();
 	});
 
 	async function loadProjects() {
@@ -64,80 +50,6 @@
 		);
 
 		projectMeta = Object.fromEntries(entries);
-	}
-
-	async function loadSettings() {
-		settingsErrorMessage = '';
-
-		try {
-			appSettings = await getAppSettings();
-		} catch (error) {
-			console.error(error);
-			settingsErrorMessage = 'Could not load settings.';
-		}
-	}
-
-	function notifySettingsChanged() {
-		window.dispatchEvent(new CustomEvent('furniture-survey:settings-changed'));
-	}
-
-	async function handleSetPasscode(event: SubmitEvent) {
-		event.preventDefault();
-		const validationError = validatePasscode(newPasscode);
-
-		if (validationError) {
-			settingsErrorMessage = validationError;
-			return;
-		}
-
-		try {
-			const passcodeHash = await createPasscodeHash(newPasscode);
-			const saved = await saveSettings(
-				{ ...appSettings, passcodeEnabled: true, passcodeHash },
-				'Passcode enabled.'
-			);
-
-			if (!saved) return;
-
-			newPasscode = '';
-
-			if (typeof sessionStorage !== 'undefined') {
-				sessionStorage.setItem('furniture-survey-unlocked-hash', passcodeHash);
-			}
-		} catch (error) {
-			console.error(error);
-			settingsErrorMessage = error instanceof Error ? error.message : 'Could not save passcode.';
-		}
-	}
-
-	async function handleDisablePasscode() {
-		if (!confirm('Disable the app passcode on this device?')) return;
-		const saved = await saveSettings(
-			{ ...appSettings, passcodeEnabled: false, passcodeHash: null },
-			'Passcode disabled.'
-		);
-		if (saved && typeof sessionStorage !== 'undefined') {
-			sessionStorage.removeItem('furniture-survey-unlocked-hash');
-		}
-	}
-
-	async function saveSettings(nextSettings: AppSettings, message: string) {
-		isSavingSettings = true;
-		settingsErrorMessage = '';
-		settingsStatusMessage = '';
-
-		try {
-			appSettings = await saveAppSettings(nextSettings);
-			settingsStatusMessage = message;
-			notifySettingsChanged();
-			return true;
-		} catch (error) {
-			console.error(error);
-			settingsErrorMessage = 'Could not save settings.';
-			return false;
-		} finally {
-			isSavingSettings = false;
-		}
 	}
 
 	async function handleCreateProject(event: SubmitEvent) {
@@ -214,89 +126,80 @@
 </svelte:head>
 
 <section class="hero">
-	<h1>Furniture surveyor</h1>
-</section>
-
-<section class="card create-card" aria-labelledby="create-project-heading">
-	<h2 id="create-project-heading">New project</h2>
-
-	<form onsubmit={handleCreateProject}>
-		<input
-			id="project-name"
-			bind:value={projectName}
-			autocomplete="off"
-			placeholder="e.g. 24 High Street"
-			aria-label="Name"
-			disabled={isSaving}
-		/>
-		<button type="submit" disabled={isSaving || !projectName.trim()}>
-			{isSaving ? 'Creating…' : 'Create'}
-		</button>
-	</form>
-</section>
-
-<section class="card settings-card" aria-labelledby="settings-heading">
-	<div>
-		<h2 id="settings-heading">Settings</h2>
-		<p class="muted">Simple on-device passcode.</p>
-	</div>
-
-	<div class="settings-grid">
-		<form class="passcode-form" onsubmit={handleSetPasscode}>
-			<label for="new-passcode"
-				>{appSettings.passcodeEnabled ? 'Change passcode' : 'Set passcode'}</label
+	<h1>Furniture<br />surveyor</h1>
+	<svg
+		class="measurement-icon"
+		viewBox="0 0 220 180"
+		role="img"
+		aria-label="Isometric box measurement placeholder"
+	>
+		<defs>
+			<marker
+				id="arrow-head"
+				viewBox="0 0 10 10"
+				refX="8"
+				refY="5"
+				markerWidth="5"
+				markerHeight="5"
+				orient="auto-start-reverse"
 			>
-			<div class="passcode-row">
-				<input
-					id="new-passcode"
-					type="password"
-					bind:value={newPasscode}
-					autocomplete="new-password"
-					placeholder="At least 4 characters"
-					disabled={isSavingSettings}
-				/>
-				<button type="submit" disabled={isSavingSettings || !newPasscode.trim()}>
-					{appSettings.passcodeEnabled ? 'Change' : 'Enable'}
-				</button>
-			</div>
-		</form>
-
-		{#if appSettings.passcodeEnabled}
-			<button
-				class="danger disable-passcode"
-				type="button"
-				onclick={handleDisablePasscode}
-				disabled={isSavingSettings}
-			>
-				Disable passcode
-			</button>
-		{/if}
-	</div>
+				<path d="M 0 0 L 10 5 L 0 10 z" />
+			</marker>
+		</defs>
+		<g class="box-lines">
+			<path d="M70 62 L126 30 L180 62 L124 95 Z" />
+			<path d="M70 62 L70 118 L124 151 L124 95" />
+			<path d="M180 62 L180 118 L124 151" />
+			<path d="M70 118 L124 87 L180 118" />
+		</g>
+		<g class="dimension-lines">
+			<path d="M58 126 L113 159" marker-start="url(#arrow-head)" marker-end="url(#arrow-head)" />
+			<path d="M133 158 L191 124" marker-start="url(#arrow-head)" marker-end="url(#arrow-head)" />
+			<path d="M192 61 L192 119" marker-start="url(#arrow-head)" marker-end="url(#arrow-head)" />
+		</g>
+		<g class="axis-lines">
+			<path d="M31 135 L63 153" marker-end="url(#arrow-head)" />
+			<path d="M31 135 L31 100" marker-end="url(#arrow-head)" />
+			<path d="M31 135 L8 149" marker-end="url(#arrow-head)" />
+		</g>
+		<g class="icon-labels" aria-hidden="true">
+			<text x="81" y="169">W</text>
+			<text x="161" y="151">L</text>
+			<text x="199" y="94">H</text>
+		</g>
+	</svg>
 </section>
-
-{#if settingsStatusMessage}
-	<p class="success" role="status">{settingsStatusMessage}</p>
-{/if}
-
-{#if settingsErrorMessage}
-	<p class="error" role="alert">{settingsErrorMessage}</p>
-{/if}
-
-{#if statusMessage}
-	<p class="success" role="status">{statusMessage}</p>
-{/if}
-
-{#if errorMessage}
-	<p class="error" role="alert">{errorMessage}</p>
-{/if}
 
 <section class="projects" aria-labelledby="projects-heading">
 	<div class="section-heading">
-		<h2 id="projects-heading">All Projects</h2>
-		<button class="secondary refresh" type="button" onclick={loadProjects} disabled={isLoading}>
-			Refresh
-		</button>
+		<h2 id="projects-heading">Projects</h2>
 	</div>
+
+	<section class="card create-card" aria-labelledby="create-project-heading">
+		<h2 id="create-project-heading">New project</h2>
+
+		<form onsubmit={handleCreateProject}>
+			<input
+				id="project-name"
+				bind:value={projectName}
+				autocomplete="off"
+				placeholder="e.g. 24 High Street"
+				aria-label="Name"
+				disabled={isSaving}
+			/>
+			<button type="submit" disabled={isSaving || !projectName.trim()}>
+				{isSaving ? 'Creating…' : 'Create'}
+			</button>
+		</form>
+	</section>
+
+	{#if statusMessage}
+		<p class="success" role="status">{statusMessage}</p>
+	{/if}
+
+	{#if errorMessage}
+		<p class="error" role="alert">{errorMessage}</p>
+	{/if}
 
 	{#if isLoading}
 		<div class="empty card">Loading projects…</div>
@@ -348,20 +251,63 @@
 
 <style>
 	.hero {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
 		padding: 1.2rem 0 1rem;
 	}
 
 	.hero h1 {
-		max-width: 10ch;
+		display: inline-block;
 		margin: 0;
+		padding-right: 0.08em;
+		color: var(--color-primary);
 		font-size: clamp(2.65rem, 16vw, 5.2rem);
 		font-weight: 700;
-		line-height: 0.9;
-		letter-spacing: -0.095em;
+		line-height: 0.95;
+		letter-spacing: -0.075em;
+	}
+
+	.measurement-icon {
+		width: clamp(7.5rem, 32vw, 13rem);
+		flex: 0 0 auto;
+		color: var(--color-primary);
+		overflow: visible;
+	}
+
+	.measurement-icon path {
+		fill: none;
+		stroke: currentColor;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	.measurement-icon marker path {
+		fill: currentColor;
+		stroke: none;
+	}
+
+	.box-lines path {
+		stroke-width: 5;
+	}
+
+	.dimension-lines path {
+		stroke-width: 3;
+	}
+
+	.axis-lines path {
+		stroke-width: 2.5;
+	}
+
+	.icon-labels {
+		fill: currentColor;
+		font-size: 16px;
+		font-weight: 800;
+		letter-spacing: 0;
 	}
 
 	.create-card,
-	.settings-card,
 	.empty,
 	.project-card {
 		padding: 1rem;
@@ -375,34 +321,10 @@
 		background: var(--color-surface);
 	}
 
-	.settings-card {
-		display: grid;
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.settings-card p {
-		margin-bottom: 0;
-	}
-
-	.settings-grid,
-	.passcode-form {
-		display: grid;
-		gap: 0.7rem;
-	}
-
-	.passcode-form label {
-		font-size: 0.9rem;
-		font-weight: 650;
-	}
-
-	.passcode-row {
-		display: grid;
-		gap: 0.65rem;
-	}
-
-	.disable-passcode {
-		width: 100%;
+	.create-card h2 {
+		color: var(--color-primary);
+		font-size: 1.2rem;
+		letter-spacing: normal;
 	}
 
 	h2,
@@ -431,12 +353,14 @@
 		align-items: end;
 		justify-content: space-between;
 		gap: 1rem;
-		margin: 1.8rem 0 0.9rem;
+		margin: 4.2rem 0 0.9rem;
 	}
 
-	.refresh {
-		min-height: 40px;
-		padding-inline: 0.85rem;
+	#projects-heading {
+		margin-left: 0.45rem;
+		color: var(--color-primary);
+		font-size: clamp(1.65rem, 8vw, 2.45rem);
+		letter-spacing: -0.04em;
 	}
 
 	ul {
@@ -487,6 +411,21 @@
 		width: 100%;
 	}
 
+	.create-card button,
+	.project-actions .button {
+		background: var(--color-primary);
+		color: white;
+	}
+
+	.create-card button:disabled {
+		opacity: 1;
+	}
+
+	.create-card button:not(:disabled):hover,
+	.project-actions .button:hover {
+		background: var(--color-primary-strong);
+	}
+
 	.empty {
 		text-align: center;
 	}
@@ -497,6 +436,10 @@
 	}
 
 	@media (min-width: 700px) {
+		.hero {
+			gap: 2rem;
+		}
+
 		.create-card {
 			grid-template-columns: 0.8fr 1.2fr;
 			align-items: center;
@@ -506,14 +449,6 @@
 		form {
 			grid-template-columns: 1fr auto;
 			align-items: end;
-		}
-
-		.settings-card {
-			grid-template-columns: 0.8fr 1.2fr;
-		}
-
-		.passcode-row {
-			grid-template-columns: 1fr auto;
 		}
 
 		.project-card {

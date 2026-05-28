@@ -13,10 +13,6 @@ export interface Project {
 	itemCountAtLastExport: number;
 }
 
-export interface AppSettings {
-	passcodeEnabled: boolean;
-	passcodeHash: string | null;
-}
 
 export interface Item {
 	id: string;

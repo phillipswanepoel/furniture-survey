@@ -6,13 +6,11 @@ import {
 	createProject,
 	createProjectModel,
 	deleteProject,
-	getAppSettings,
 	getProject,
 	getProjects,
-	normalizeProjectName,
-	saveAppSettings
+	normalizeProjectName
 } from './projectStorage';
-import type { AppSettings, Item, StoredImage } from './types';
+import type { Item, StoredImage } from './types';
 
 let database: FurnitureSurveyDatabase;
 
@@ -101,19 +99,4 @@ describe('project storage', () => {
 		expect(await database.images.where('projectId').equals(project.id).count()).toBe(0);
 	});
 
-	it('returns default settings and persists settings updates', async () => {
-		const settings: AppSettings = {
-			passcodeEnabled: true,
-			passcodeHash: 'hash-value'
-		};
-
-		expect(await getAppSettings(database)).toStrictEqual({
-			passcodeEnabled: false,
-			passcodeHash: null
-		});
-
-		await saveAppSettings(settings, database);
-
-		expect(await getAppSettings(database)).toStrictEqual(settings);
-	});
 });

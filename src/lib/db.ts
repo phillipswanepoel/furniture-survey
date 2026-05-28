@@ -1,13 +1,7 @@
 import Dexie, { type Table } from 'dexie';
-import type { AppSettings, Item, Project, SettingsRecord, StoredImage } from './types';
+import type { Item, Project, SettingsRecord, StoredImage } from './types';
 
 export const DATABASE_NAME = 'furniture-survey';
-export const SETTINGS_KEY = 'app';
-
-export const DEFAULT_APP_SETTINGS: AppSettings = {
-	passcodeEnabled: false,
-	passcodeHash: null
-};
 
 type DexieConstructorOptions = ConstructorParameters<typeof Dexie>[1];
 

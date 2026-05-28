@@ -10,8 +10,8 @@ export default defineConfig({
 			injectRegister: false,
 			includeAssets: ['robots.txt', 'icons/icon.svg'],
 			manifest: {
-				name: 'Furniture Survey',
-				short_name: 'Furniture',
+				name: 'furnisurve',
+				short_name: 'furnisurve',
 				description: 'Local-first furniture survey app for offline project and item records.',
 				start_url: '/',
 				scope: '/',

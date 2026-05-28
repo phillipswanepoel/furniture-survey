@@ -401,7 +401,7 @@
 </script>
 
 <svelte:head>
-	<title>{project ? `Add item · ${project.name}` : 'Add item · Furniture Survey'}</title>
+	<title>{project ? `Add item · ${project.name}` : 'Add item · furnisurve'}</title>
 </svelte:head>
 
 <a class="back-link" href={resolve('/projects/[projectId]', { projectId })}>← Project</a>
@@ -639,9 +639,6 @@
 				{/if}
 
 				<div class="actions">
-					<button type="submit" disabled={!canSave}>
-						{isSaving ? 'Saving…' : 'Save item'}
-					</button>
 					<button
 						class="secondary"
 						type="button"
@@ -649,6 +646,9 @@
 						disabled={!canSave}
 					>
 						Save + next
+					</button>
+					<button type="submit" disabled={!canSave}>
+						{isSaving ? 'Saving…' : 'Save item'}
 					</button>
 					<button
 						class="danger"
@@ -750,6 +750,7 @@
 		color: var(--color-primary);
 		font-weight: 650;
 	}
+
 
 	.photo-actions {
 		display: grid;

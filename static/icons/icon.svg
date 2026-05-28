@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-	<title id="title">Furniture Survey icon</title>
+	<title id="title">furnisurve icon</title>
 	<desc id="desc">A sofa inside a rounded square.</desc>
 	<rect width="512" height="512" rx="112" fill="#274c45" />
 	<circle cx="384" cy="128" r="56" fill="#d8b96f" opacity="0.9" />

@@ -59,22 +59,3 @@ test('complete local survey flow', async ({ page }) => {
 	await expect(page.getByText('Deleted KIT-002.')).toBeVisible();
 	await expect(page.getByText('Round kitchen table')).toBeHidden();
 });
-
-test('passcode gate locks and unlocks the app', async ({ page }) => {
-	await page.goto('/');
-	await page.getByLabel('Set passcode').fill('1234');
-	await page.getByRole('button', { name: 'Enable' }).click();
-	await expect(page.getByText('Passcode enabled.')).toBeVisible();
-
-	await page.evaluate(() => sessionStorage.clear());
-	await page.reload();
-
-	await expect(page.getByRole('heading', { name: 'Enter passcode' })).toBeVisible();
-	await page.locator('#app-passcode').fill('0000');
-	await page.getByRole('button', { name: 'Unlock' }).click();
-	await expect(page.getByText('Passcode is not correct.')).toBeVisible();
-
-	await page.locator('#app-passcode').fill('1234');
-	await page.getByRole('button', { name: 'Unlock' }).click();
-	await expect(page.getByRole('heading', { name: 'Furniture surveyor' })).toBeVisible();
-});

@@ -294,7 +294,7 @@
 </script>
 
 <svelte:head>
-	<title>{project ? `Items review · ${project.name}` : 'Items review · Furniture Survey'}</title>
+	<title>{project ? `Items review · ${project.name}` : 'Items review · furnisurve'}</title>
 </svelte:head>
 
 <a class="back-link" href={resolve('/projects/[projectId]', { projectId })}>← Project</a>
@@ -316,9 +316,6 @@
 			<h1>Items review</h1>
 			<p class="muted">{project.name}</p>
 		</div>
-		<a class="button" href={resolve('/projects/[projectId]/items/new', { projectId: project.id })}>
-			Continue survey
-		</a>
 	</section>
 
 	{#if draftItem}
@@ -331,7 +328,7 @@
 				class="button secondary"
 				href={resolve('/projects/[projectId]/items/new', { projectId: project.id })}
 			>
-				Continue survey
+				Continue item
 			</a>
 		</section>
 	{/if}
@@ -581,9 +578,6 @@
 		letter-spacing: -0.09em;
 	}
 
-	.review-hero .button {
-		width: 100%;
-	}
 
 	.state-card,
 	.draft-card,
@@ -609,6 +603,7 @@
 	.draft-card .button {
 		width: 100%;
 	}
+
 
 	h2,
 	h3,
@@ -822,7 +817,6 @@
 			align-items: center;
 		}
 
-		.review-hero .button,
 		.draft-card .button {
 			width: auto;
 		}

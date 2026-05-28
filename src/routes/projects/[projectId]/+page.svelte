@@ -89,7 +89,7 @@
 </script>
 
 <svelte:head>
-	<title>{project ? `${project.name} · Furniture Survey` : 'Project · Furniture Survey'}</title>
+	<title>{project ? `${project.name} · furnisurve` : 'Project · furnisurve'}</title>
 </svelte:head>
 
 <a class="back-link" href={resolve('/')}>← Projects</a>
@@ -142,7 +142,13 @@
 			>
 				Continue survey
 			</a>
-			<button class="secondary" type="button" onclick={handleExportProject} disabled={isExporting}>
+			<a
+				class="button"
+				href={resolve('/projects/[projectId]/items', { projectId: project.id })}
+			>
+				Review items
+			</a>
+			<button type="button" onclick={handleExportProject} disabled={isExporting}>
 				{isExporting ? 'Exporting…' : 'Export'}
 			</button>
 			<button
@@ -153,12 +159,6 @@
 			>
 				{isDeleting ? 'Deleting…' : 'Delete'}
 			</button>
-			<a
-				class="button secondary"
-				href={resolve('/projects/[projectId]/items', { projectId: project.id })}
-			>
-				Review items
-			</a>
 		</div>
 	</section>
 {/if}
@@ -172,9 +172,10 @@
 	.state-card h1 {
 		max-width: 13ch;
 		margin: 0;
+		padding-bottom: 0.18em;
 		font-size: clamp(2.45rem, 14vw, 4.8rem);
 		font-weight: 700;
-		line-height: 0.92;
+		line-height: 1.18;
 		letter-spacing: -0.09em;
 	}
 
@@ -229,6 +230,17 @@
 	.actions-grid button,
 	.actions-grid .button {
 		width: 100%;
+	}
+
+	.actions-grid button:not(.danger),
+	.actions-grid .button:not(.danger) {
+		background: var(--color-primary);
+		color: white;
+	}
+
+	.actions-grid button:not(.danger):hover,
+	.actions-grid .button:not(.danger):hover {
+		background: var(--color-primary-strong);
 	}
 
 	@media (min-width: 700px) {

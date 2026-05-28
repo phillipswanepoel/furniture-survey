@@ -4,6 +4,7 @@ import { generateItemsCsv, type ItemCsvRecord } from './csvExport';
 import { filenameSafePart, generateImageFilename } from './filenames';
 import { getImagesForItems } from './imageStorage';
 import { getSavedItems } from './itemStorage';
+import type { SpreadsheetItemRecord } from './spreadsheetExport';
 import type { Item, Project, StoredImage } from './types';
 
 export interface ExportImageMetadata {
@@ -33,6 +34,7 @@ export interface ZipImageEntry {
 	imageId: string;
 	itemId: string;
 	filename: string;
+	mimeType: string;
 	blob: Blob;
 }
 
@@ -119,6 +121,7 @@ export function createProjectExportData(
 				imageId: image.id,
 				itemId: item.id,
 				filename: metadata.filename,
+				mimeType: metadata.mimeType,
 				blob: image.blob
 			});
 
@@ -167,12 +170,32 @@ export async function getProjectExportData(
 	return createProjectExportData(project, items, imageGroups, exportedAt);
 }
 
+function spreadsheetRecordsForExportData(exportData: ProjectExportData): SpreadsheetItemRecord[] {
+	const imagesByItemId = new Map<string, ZipImageEntry[]>();
+
+	for (const image of exportData.imageEntries) {
+		const images = imagesByItemId.get(image.itemId) ?? [];
+		images.push(image);
+		imagesByItemId.set(image.itemId, images);
+	}
+
+	return exportData.metadata.items.map((item) => ({
+		item,
+		images: imagesByItemId.get(item.id) ?? []
+	}));
+}
+
 export async function createProjectZipBlob(exportData: ProjectExportData) {
 	const zip = new JSZip();
 	const imageFolder = zip.folder('images');
+	const { createItemsSpreadsheetBlob } = await import('./spreadsheetExport');
+	const spreadsheetBlob = await createItemsSpreadsheetBlob(
+		spreadsheetRecordsForExportData(exportData)
+	);
 
 	zip.file('items.csv', exportData.csv);
 	zip.file('items.json', exportData.json);
+	zip.file('items.xlsx', await spreadsheetBlob.arrayBuffer());
 
 	for (const image of exportData.imageEntries) {
 		imageFolder?.file(image.filename, await image.blob.arrayBuffer());

@@ -9,4 +9,5 @@ export * from './imageCompression';
 export * from './filenames';
 export * from './imageStorage';
 export * from './csvExport';
+export * from './spreadsheetExport';
 export * from './zipExport';

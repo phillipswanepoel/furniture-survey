@@ -84,7 +84,7 @@ describe('ZIP export', () => {
 		expect(metadata.items[0].images[0]).not.toHaveProperty('blob');
 	});
 
-	it('creates a ZIP with CSV, JSON, and image files', async () => {
+	it('creates a ZIP with CSV, XLSX, JSON, and image files', async () => {
 		const project = await createProject({ name: 'Flat 10 Export' }, database);
 		const draft = await createDraftItem(project.id, database);
 		await updateDraftItem(draft.id, { itemName: 'Sofa', room: 'Lounge', quantity: 1 }, database);
@@ -99,11 +99,13 @@ describe('ZIP export', () => {
 		const zip = await JSZip.loadAsync(await zipExport.blob.arrayBuffer());
 		const csv = await zip.file('items.csv')?.async('string');
 		const json = await zip.file('items.json')?.async('string');
+		const spreadsheet = await zip.file('items.xlsx')?.async('uint8array');
 		const image = await zip.file('images/flat-10-export_LR-001_01.jpg')?.async('string');
 
 		expect(zipExport.filename).toBe('flat-10-export_2026-05-28.zip');
 		expect(csv).toContain('LR-001,Sofa,Lounge');
 		expect(json).toContain('"imageCount": 1');
+		expect(spreadsheet?.byteLength).toBeGreaterThan(0);
 		expect(image).toBe('image-data');
 	});
 

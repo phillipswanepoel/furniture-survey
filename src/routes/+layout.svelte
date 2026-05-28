@@ -82,7 +82,9 @@
 	}
 
 	:global(button),
-	:global(input) {
+	:global(input),
+	:global(select),
+	:global(textarea) {
 		font: inherit;
 	}
 
@@ -127,7 +129,9 @@
 		color: var(--color-danger);
 	}
 
-	:global(input) {
+	:global(input),
+	:global(select),
+	:global(textarea) {
 		width: 100%;
 		min-height: 48px;
 		border: 1px solid var(--color-border);
@@ -137,7 +141,13 @@
 		color: var(--color-text);
 	}
 
-	:global(input:focus) {
+	:global(textarea) {
+		resize: vertical;
+	}
+
+	:global(input:focus),
+	:global(select:focus),
+	:global(textarea:focus) {
 		outline: 3px solid rgb(39 76 69 / 0.2);
 		border-color: var(--color-primary);
 	}

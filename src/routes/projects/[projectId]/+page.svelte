@@ -2,10 +2,12 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import { countProjectItems, deleteProject, getProject } from '$lib/projectStorage';
-	import type { Project } from '$lib/types';
+	import { countSavedProjectItems, getDraftItem } from '$lib/itemStorage';
+	import { deleteProject, getProject } from '$lib/projectStorage';
+	import type { Item, Project } from '$lib/types';
 
 	let project = $state<Project | null>(null);
+	let draftItem = $state<Item | null>(null);
 	let itemCount = $state(0);
 	let isLoading = $state(true);
 	let isDeleting = $state(false);
@@ -24,7 +26,8 @@
 		try {
 			const existingProject = await getProject(projectId);
 			project = existingProject ?? null;
-			itemCount = existingProject ? await countProjectItems(existingProject.id) : 0;
+			itemCount = existingProject ? await countSavedProjectItems(existingProject.id) : 0;
+			draftItem = existingProject ? await getDraftItem(existingProject.id) : null;
 		} catch (error) {
 			console.error(error);
 			errorMessage = 'Could not load this project from local storage.';
@@ -88,7 +91,7 @@
 		<div class="card stat-card">
 			<span>{itemCount}</span>
 			<strong>Items saved</strong>
-			<small>Item entry arrives in phase 2.</small>
+			<small>{draftItem ? 'Draft in progress.' : 'Ready for review.'}</small>
 		</div>
 		<div class="card stat-card">
 			<span>{project.nextItemSequence}</span>
@@ -98,7 +101,7 @@
 		<div class="card stat-card">
 			<span>{project.lastDimensionUnit}</span>
 			<strong>Default unit</strong>
-			<small>Carried into new items later.</small>
+			<small>Carried into new drafts.</small>
 		</div>
 	</section>
 
@@ -106,12 +109,22 @@
 		<div>
 			<p class="eyebrow">Workflow</p>
 			<h2 id="actions-heading">Project actions</h2>
-			<p class="muted">This screen is ready for the item, photo, and export phases.</p>
+			<p class="muted">Add items now. Photos and ZIP export arrive in later phases.</p>
 		</div>
 
 		<div class="actions-grid">
-			<button type="button" disabled>Add item · Phase 2</button>
-			<button class="secondary" type="button" disabled>Review items · Phase 2</button>
+			<a
+				class="button"
+				href={resolve('/projects/[projectId]/items/new', { projectId: project.id })}
+			>
+				{draftItem ? 'Continue draft' : 'Add item'}
+			</a>
+			<a
+				class="button secondary"
+				href={resolve('/projects/[projectId]/items', { projectId: project.id })}
+			>
+				Review items
+			</a>
 			<button class="secondary" type="button" disabled>Export ZIP · Phase 4</button>
 			<button class="danger" type="button" onclick={handleDeleteProject} disabled={isDeleting}>
 				{isDeleting ? 'Deleting…' : 'Delete project'}
@@ -121,7 +134,7 @@
 
 	<section class="card data-card" aria-labelledby="storage-heading">
 		<p class="eyebrow">IndexedDB record</p>
-		<h2 id="storage-heading">Phase 1 storage defaults</h2>
+		<h2 id="storage-heading">Project storage state</h2>
 		<dl>
 			<div>
 				<dt>Project ID</dt>
@@ -222,7 +235,8 @@
 		margin-bottom: 0.4rem;
 	}
 
-	.actions-grid button {
+	.actions-grid button,
+	.actions-grid .button {
 		width: 100%;
 	}
 

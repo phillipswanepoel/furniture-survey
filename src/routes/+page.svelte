@@ -80,11 +80,11 @@
 </svelte:head>
 
 <section class="hero">
-	<p class="eyebrow">Phase 1 skeleton</p>
+	<p class="eyebrow">Local-first survey</p>
 	<h1>Survey furniture offline, project by project.</h1>
 	<p class="muted">
-		Create projects now. Item entry, photos, export, passcode, and reminders will build on this
-		local IndexedDB foundation in later phases.
+		Create projects and add item records now. Photos, export, passcode, and reminders will build on
+		this local IndexedDB foundation in later phases.
 	</p>
 </section>
 

@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { onDestroy, onMount } from 'svelte';
+	import { compressAndAddImageToItem, deleteImage, getImagesForItem } from '$lib/imageStorage';
 	import {
 		createDraftItem,
 		deleteDraftItem,
@@ -14,8 +15,13 @@
 	} from '$lib/itemStorage';
 	import { generateItemNumber } from '$lib/itemNumbers';
 	import { getProject } from '$lib/projectStorage';
-	import type { DimensionUnit, Item, Project } from '$lib/types';
+	import type { DimensionUnit, Item, Project, StoredImage } from '$lib/types';
 	import { validateItemForSave, type ItemValidationErrors } from '$lib/validation';
+
+	interface PhotoPreview {
+		image: StoredImage;
+		url: string;
+	}
 
 	let project = $state<Project | null>(null);
 	let draftId = $state('');
@@ -27,10 +33,13 @@
 	let heightInput = $state('');
 	let dimensionUnit = $state<DimensionUnit>('mm');
 	let notes = $state('');
+	let photoPreviews = $state<PhotoPreview[]>([]);
 	let isLoading = $state(true);
 	let isSaving = $state(false);
 	let isAutosaving = $state(false);
+	let isAddingPhotos = $state(false);
 	let isDiscarding = $state(false);
+	let deletingPhotoId = $state<string | null>(null);
 	let recoveredDraft = $state(false);
 	let saveAttempted = $state(false);
 	let lastSavedAt = $state('');
@@ -46,7 +55,10 @@
 	const validation = $derived(
 		validateItemForSave({ itemName, room, quantity, length, width, height, dimensionUnit })
 	);
-	const canSave = $derived(Boolean(draftId && validation.valid && !isSaving && !isLoading));
+	const canSave = $derived(
+		Boolean(draftId && validation.valid && !isSaving && !isLoading && !isAddingPhotos)
+	);
+	const photoControlsDisabled = $derived(isAddingPhotos || isSaving || isDiscarding || !draftId);
 	const itemNumberPreview = $derived(
 		project && room.trim()
 			? generateItemNumber(room, project.nextItemSequence)
@@ -59,6 +71,7 @@
 
 	onDestroy(() => {
 		clearAutosaveTimer();
+		revokePhotoPreviews();
 	});
 
 	async function loadDraft() {
@@ -74,9 +87,15 @@
 
 			const existingDraft = await getDraftItem(existingProject.id);
 			let draft: Item;
+			let draftImages: StoredImage[] = [];
 
 			if (existingDraft) {
-				const hasRecoverableContent = draftHasUserContent(existingDraft, existingProject);
+				draftImages = await getImagesForItem(existingDraft.id);
+				const hasRecoverableContent = draftHasUserContent(
+					existingDraft,
+					existingProject,
+					draftImages.length
+				);
 
 				if (
 					hasRecoverableContent &&
@@ -84,6 +103,7 @@
 				) {
 					await deleteDraftItem(existingDraft.id);
 					draft = await createDraftItem(existingProject.id);
+					draftImages = [];
 					recoveredDraft = false;
 				} else {
 					draft = existingDraft;
@@ -95,6 +115,7 @@
 			}
 
 			populateDraft(draft);
+			setPhotoPreviews(draftImages);
 		} catch (error) {
 			console.error(error);
 			errorMessage = 'Could not load the item draft from local storage.';
@@ -116,8 +137,9 @@
 		lastSavedAt = draft.updatedAt;
 	}
 
-	function draftHasUserContent(draft: Item, existingProject: Project) {
+	function draftHasUserContent(draft: Item, existingProject: Project, photoCount = 0) {
 		return Boolean(
+			photoCount > 0 ||
 			draft.itemName.trim() ||
 			isChangedText(draft.room, existingProject.lastRoom ?? '') ||
 			draft.quantity !== 1 ||
@@ -131,6 +153,28 @@
 
 	function isChangedText(value: string, defaultValue: string) {
 		return value.trim().replace(/\s+/g, ' ') !== defaultValue.trim().replace(/\s+/g, ' ');
+	}
+
+	function revokePhotoPreviews() {
+		for (const preview of photoPreviews) {
+			URL.revokeObjectURL(preview.url);
+		}
+
+		photoPreviews = [];
+	}
+
+	function setPhotoPreviews(images: StoredImage[]) {
+		revokePhotoPreviews();
+		photoPreviews = images.map((image) => ({ image, url: URL.createObjectURL(image.blob) }));
+	}
+
+	async function refreshPhotoPreviews() {
+		if (!draftId) {
+			setPhotoPreviews([]);
+			return;
+		}
+
+		setPhotoPreviews(await getImagesForItem(draftId));
 	}
 
 	function parseQuantity(value: string) {
@@ -198,6 +242,74 @@
 		}
 	}
 
+	async function handlePhotoFiles(event: Event) {
+		const input = event.currentTarget;
+
+		if (!(input instanceof HTMLInputElement)) return;
+
+		const files = Array.from(input.files ?? []).filter(
+			(file) => !file.type || file.type.startsWith('image/')
+		);
+
+		if (files.length === 0) {
+			input.value = '';
+			return;
+		}
+
+		if (!draftId || isSaving || isDiscarding) {
+			errorMessage = 'Wait for the draft to be ready before adding photos.';
+			input.value = '';
+			return;
+		}
+
+		isAddingPhotos = true;
+		errorMessage = '';
+		successMessage = '';
+		clearAutosaveTimer();
+
+		try {
+			isAutosaving = true;
+			const draft = await updateDraftItem(draftId, collectDraftFields());
+			lastSavedAt = draft.updatedAt;
+			isAutosaving = false;
+
+			for (const file of files) {
+				await compressAndAddImageToItem(draftId, file);
+			}
+
+			await refreshPhotoPreviews();
+			lastSavedAt = new Date().toISOString();
+			successMessage = `Added ${files.length} photo${files.length === 1 ? '' : 's'}.`;
+		} catch (error) {
+			console.error(error);
+			errorMessage = error instanceof Error ? error.message : 'Could not add photos.';
+		} finally {
+			isAutosaving = false;
+			isAddingPhotos = false;
+			input.value = '';
+		}
+	}
+
+	async function handleDeletePhoto(image: StoredImage) {
+		if (!confirm('Remove this photo from the item?')) return;
+
+		deletingPhotoId = image.id;
+		errorMessage = '';
+		successMessage = '';
+
+		try {
+			await deleteImage(image.id);
+			await refreshPhotoPreviews();
+			lastSavedAt = new Date().toISOString();
+			successMessage = 'Photo removed.';
+		} catch (error) {
+			console.error(error);
+			errorMessage = 'Could not remove this photo.';
+		} finally {
+			deletingPhotoId = null;
+		}
+	}
+
 	async function handleSave(event: SubmitEvent) {
 		event.preventDefault();
 		await saveCurrentDraft(false);
@@ -235,6 +347,7 @@
 			}
 
 			populateDraft(result.nextDraft);
+			setPhotoPreviews([]);
 			saveAttempted = false;
 			recoveredDraft = false;
 			successMessage = `Saved ${result.item.itemNumber}. Ready for the next item.`;
@@ -278,6 +391,12 @@
 		return new Intl.DateTimeFormat(undefined, {
 			timeStyle: 'short'
 		}).format(new Date(value));
+	}
+
+	function formatBytes(value: number) {
+		if (value < 1024) return `${value} B`;
+		if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+		return `${(value / 1024 / 1024).toFixed(1)} MB`;
 	}
 </script>
 
@@ -330,6 +449,78 @@
 				<strong>{itemNumberPreview}</strong>
 			</div>
 		</div>
+
+		<section class="photo-card" aria-labelledby="photos-heading">
+			<div class="photo-heading">
+				<div>
+					<h3 id="photos-heading">Photos</h3>
+					<p class="muted">Take or add multiple photos. Images compress before local storage.</p>
+				</div>
+				<strong>{photoPreviews.length} photo{photoPreviews.length === 1 ? '' : 's'}</strong>
+			</div>
+
+			<div class="photo-actions">
+				<input
+					class="file-input"
+					id="camera-photo"
+					type="file"
+					accept="image/*"
+					capture="environment"
+					onchange={handlePhotoFiles}
+					disabled={photoControlsDisabled}
+				/>
+				<label
+					class="button"
+					class:disabled-label={photoControlsDisabled}
+					for="camera-photo"
+					aria-disabled={photoControlsDisabled ? 'true' : undefined}
+				>
+					{isAddingPhotos ? 'Adding…' : 'Take photo'}
+				</label>
+
+				<input
+					class="file-input"
+					id="library-photos"
+					type="file"
+					accept="image/*"
+					multiple
+					onchange={handlePhotoFiles}
+					disabled={photoControlsDisabled}
+				/>
+				<label
+					class="button secondary"
+					class:disabled-label={photoControlsDisabled}
+					for="library-photos"
+					aria-disabled={photoControlsDisabled ? 'true' : undefined}
+				>
+					Add from library
+				</label>
+			</div>
+
+			{#if photoPreviews.length === 0}
+				<p class="empty-photos">No photos added yet.</p>
+			{:else}
+				<ul class="photo-grid" aria-label="Draft photos">
+					{#each photoPreviews as preview (preview.image.id)}
+						<li>
+							<img src={preview.url} alt={`Item photo ${preview.image.sortOrder}`} />
+							<div>
+								<strong>Photo {preview.image.sortOrder}</strong>
+								<small>{formatBytes(preview.image.size)}</small>
+							</div>
+							<button
+								class="danger remove-photo"
+								type="button"
+								onclick={() => handleDeletePhoto(preview.image)}
+								disabled={deletingPhotoId === preview.image.id || isAddingPhotos}
+							>
+								{deletingPhotoId === preview.image.id ? 'Removing…' : 'Remove'}
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
 
 		<form onsubmit={handleSave}>
 			<div class="field">
@@ -472,7 +663,7 @@
 						class="danger"
 						type="button"
 						onclick={handleDiscardDraft}
-						disabled={isSaving || isDiscarding}
+						disabled={isSaving || isDiscarding || isAddingPhotos}
 					>
 						{isDiscarding ? 'Discarding…' : 'Discard draft'}
 					</button>
@@ -551,11 +742,13 @@
 	}
 
 	h2,
+	h3,
 	p {
 		margin-top: 0;
 	}
 
-	h2 {
+	h2,
+	h3 {
 		margin-bottom: 0.35rem;
 	}
 
@@ -576,6 +769,96 @@
 
 	.number-preview strong {
 		font-size: 1.25rem;
+	}
+
+	.photo-card {
+		display: grid;
+		gap: 0.9rem;
+		border-radius: 1rem;
+		padding: 0.85rem;
+		background: color-mix(in srgb, var(--color-primary-soft) 70%, transparent);
+	}
+
+	.photo-heading {
+		display: grid;
+		gap: 0.5rem;
+	}
+
+	.photo-heading strong {
+		color: var(--color-primary);
+		font-weight: 900;
+	}
+
+	.photo-actions {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.65rem;
+	}
+
+	.file-input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.disabled-label {
+		pointer-events: none;
+	}
+
+	.empty-photos {
+		margin: 0;
+		border: 1px dashed var(--color-border);
+		border-radius: 1rem;
+		padding: 1rem;
+		color: var(--color-muted);
+		font-weight: 800;
+		text-align: center;
+	}
+
+	.photo-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+		gap: 0.75rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.photo-grid li {
+		display: grid;
+		gap: 0.55rem;
+		border: 1px solid var(--color-border);
+		border-radius: 1rem;
+		padding: 0.55rem;
+		background: var(--color-surface-strong);
+	}
+
+	.photo-grid img {
+		width: 100%;
+		aspect-ratio: 1;
+		border-radius: 0.75rem;
+		object-fit: cover;
+		background: var(--color-primary-soft);
+	}
+
+	.photo-grid strong,
+	.photo-grid small {
+		display: block;
+	}
+
+	.photo-grid small {
+		margin-top: 0.15rem;
+		color: var(--color-muted);
+		font-weight: 700;
+	}
+
+	.remove-photo {
+		min-height: 38px;
+		padding-block: 0.6rem;
 	}
 
 	form,
@@ -642,6 +925,12 @@
 
 		.number-preview {
 			min-width: 13rem;
+		}
+
+		.photo-heading,
+		.photo-actions {
+			grid-template-columns: 1fr auto;
+			align-items: center;
 		}
 
 		.two-column {

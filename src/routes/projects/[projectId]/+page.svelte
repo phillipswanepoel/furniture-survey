@@ -109,7 +109,7 @@
 		<div>
 			<p class="eyebrow">Workflow</p>
 			<h2 id="actions-heading">Project actions</h2>
-			<p class="muted">Add items now. Photos and ZIP export arrive in later phases.</p>
+			<p class="muted">Add items and photos now. ZIP export arrives in phase 4.</p>
 		</div>
 
 		<div class="actions-grid">

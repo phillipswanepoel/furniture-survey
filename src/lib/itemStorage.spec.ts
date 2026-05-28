@@ -1,11 +1,13 @@
 import { indexedDB, IDBKeyRange } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createDatabase, type FurnitureSurveyDatabase } from './db';
+import { addImageToItem } from './imageStorage';
 import {
 	countSavedProjectItems,
 	createDraftItem,
 	createOrRecoverDraftItem,
 	deleteDraftItem,
+	deleteItem,
 	finalizeDraftAndCreateNext,
 	finalizeDraftItem,
 	getDraftItem,
@@ -154,8 +156,25 @@ describe('item storage', () => {
 		expect(draft?.status).toBe('draft');
 	});
 
-	it('discards draft items', async () => {
+	it('deletes saved items and their related images', async () => {
 		const project = await createProject({ name: 'Flat 7' }, database);
+		const draft = await createDraftItem(project.id, database);
+		await updateDraftItem(draft.id, { itemName: 'Cabinet', room: 'Storage' }, database);
+		const result = await finalizeDraftItem(draft.id, database);
+		await addImageToItem(
+			result.item.id,
+			new Blob(['image-data'], { type: 'image/jpeg' }),
+			database
+		);
+
+		await deleteItem(result.item.id, database);
+
+		expect(await database.items.get(result.item.id)).toBeUndefined();
+		expect(await database.images.where('itemId').equals(result.item.id).count()).toBe(0);
+	});
+
+	it('discards draft items', async () => {
+		const project = await createProject({ name: 'Flat 8' }, database);
 		const draft = await createDraftItem(project.id, database);
 
 		await deleteDraftItem(draft.id, database);

@@ -1,4 +1,5 @@
 import { db as defaultDb, type FurnitureSurveyDatabase } from './db';
+import { updateImageFilenamesForItem } from './imageStorage';
 import { generateItemNumber } from './itemNumbers';
 import type { DimensionUnit, Item, Project } from './types';
 import { normalizeItemText, validateItemForSave, type ItemValidationErrors } from './validation';
@@ -137,62 +138,69 @@ async function finalizeDraft(
 	createNextDraft: boolean,
 	database: FurnitureSurveyDatabase
 ): Promise<FinalizeItemResult> {
-	return database.transaction('rw', database.projects, database.items, async () => {
-		const draft = await database.items.get(id);
+	return database.transaction(
+		'rw',
+		database.projects,
+		database.items,
+		database.images,
+		async () => {
+			const draft = await database.items.get(id);
 
-		if (!draft) {
-			throw new Error('Item not found');
+			if (!draft) {
+				throw new Error('Item not found');
+			}
+
+			if (draft.status !== 'draft') {
+				throw new Error('Item has already been saved');
+			}
+
+			const project = await database.projects.get(draft.projectId);
+
+			if (!project) {
+				throw new Error('Project not found');
+			}
+
+			const itemName = normalizeItemText(draft.itemName);
+			const room = normalizeItemText(draft.room);
+			const validation = validateItemForSave({ ...draft, itemName, room });
+
+			if (!validation.valid) {
+				throw new ItemValidationError(validation.errors);
+			}
+
+			const updatedAt = nowIso();
+			const item: Item = {
+				...draft,
+				itemNumber: generateItemNumber(room, project.nextItemSequence),
+				itemName,
+				room,
+				status: 'saved',
+				updatedAt
+			};
+			const projectChanges: Pick<
+				Project,
+				'nextItemSequence' | 'lastRoom' | 'lastDimensionUnit' | 'updatedAt'
+			> = {
+				nextItemSequence: project.nextItemSequence + 1,
+				lastRoom: room,
+				lastDimensionUnit: item.dimensionUnit,
+				updatedAt
+			};
+			const updatedProject: Project = { ...project, ...projectChanges };
+			let nextDraft: Item | undefined;
+
+			await database.items.put(item);
+			await database.projects.update(project.id, projectChanges);
+			await updateImageFilenamesForItem(item, updatedProject, database);
+
+			if (createNextDraft) {
+				nextDraft = createDraftItemModel(updatedProject, updatedAt);
+				await database.items.add(nextDraft);
+			}
+
+			return { item, project: updatedProject, nextDraft };
 		}
-
-		if (draft.status !== 'draft') {
-			throw new Error('Item has already been saved');
-		}
-
-		const project = await database.projects.get(draft.projectId);
-
-		if (!project) {
-			throw new Error('Project not found');
-		}
-
-		const itemName = normalizeItemText(draft.itemName);
-		const room = normalizeItemText(draft.room);
-		const validation = validateItemForSave({ ...draft, itemName, room });
-
-		if (!validation.valid) {
-			throw new ItemValidationError(validation.errors);
-		}
-
-		const updatedAt = nowIso();
-		const item: Item = {
-			...draft,
-			itemNumber: generateItemNumber(room, project.nextItemSequence),
-			itemName,
-			room,
-			status: 'saved',
-			updatedAt
-		};
-		const projectChanges: Pick<
-			Project,
-			'nextItemSequence' | 'lastRoom' | 'lastDimensionUnit' | 'updatedAt'
-		> = {
-			nextItemSequence: project.nextItemSequence + 1,
-			lastRoom: room,
-			lastDimensionUnit: item.dimensionUnit,
-			updatedAt
-		};
-		const updatedProject: Project = { ...project, ...projectChanges };
-		let nextDraft: Item | undefined;
-
-		await database.items.put(item);
-		await database.projects.update(project.id, projectChanges);
-
-		if (createNextDraft) {
-			nextDraft = createDraftItemModel(updatedProject, updatedAt);
-			await database.items.add(nextDraft);
-		}
-
-		return { item, project: updatedProject, nextDraft };
-	});
+	);
 }
 
 export async function finalizeDraftItem(id: string, database: FurnitureSurveyDatabase = defaultDb) {

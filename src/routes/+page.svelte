@@ -83,8 +83,8 @@
 	<p class="eyebrow">Local-first survey</p>
 	<h1>Survey furniture offline, project by project.</h1>
 	<p class="muted">
-		Create projects and add item records now. Photos, export, passcode, and reminders will build on
-		this local IndexedDB foundation in later phases.
+		Create projects, add item records, and store compressed photos locally. Export, passcode, and
+		reminders will build on this IndexedDB foundation in later phases.
 	</p>
 </section>
 

@@ -5,3 +5,6 @@ export * from './roomCodes';
 export * from './itemNumbers';
 export * from './validation';
 export * from './itemStorage';
+export * from './imageCompression';
+export * from './filenames';
+export * from './imageStorage';

@@ -9,7 +9,9 @@
 	let isLoading = $state(true);
 	let isSaving = $state(false);
 	let deletingProjectId = $state<string | null>(null);
+	let exportingProjectId = $state<string | null>(null);
 	let errorMessage = $state('');
+	let statusMessage = $state('');
 
 	onMount(() => {
 		void loadProjects();
@@ -18,6 +20,7 @@
 	async function loadProjects() {
 		isLoading = true;
 		errorMessage = '';
+		statusMessage = '';
 
 		try {
 			projects = await getProjects();
@@ -33,6 +36,7 @@
 		event.preventDefault();
 		isSaving = true;
 		errorMessage = '';
+		statusMessage = '';
 
 		try {
 			await createProject({ name: projectName });
@@ -51,6 +55,7 @@
 
 		deletingProjectId = project.id;
 		errorMessage = '';
+		statusMessage = '';
 
 		try {
 			await deleteProject(project.id);
@@ -60,6 +65,34 @@
 			errorMessage = 'Could not delete project.';
 		} finally {
 			deletingProjectId = null;
+		}
+	}
+
+	async function handleExportProject(project: Project) {
+		exportingProjectId = project.id;
+		errorMessage = '';
+		statusMessage = '';
+
+		try {
+			const { createProjectZip, downloadBlob, markProjectAsExported } =
+				await import('$lib/zipExport');
+			const zipExport = await createProjectZip(project.id);
+
+			downloadBlob(zipExport.blob, zipExport.filename);
+
+			const updatedProject = await markProjectAsExported(project.id, {
+				itemCount: zipExport.metadata.itemCount,
+				exportedAt: zipExport.metadata.exportedAt
+			});
+			projects = projects.map((existingProject) =>
+				existingProject.id === project.id ? updatedProject : existingProject
+			);
+			statusMessage = `Downloaded ${zipExport.filename}.`;
+		} catch (error) {
+			console.error(error);
+			errorMessage = error instanceof Error ? error.message : 'Could not export project.';
+		} finally {
+			exportingProjectId = null;
 		}
 	}
 
@@ -83,8 +116,8 @@
 	<p class="eyebrow">Local-first survey</p>
 	<h1>Survey furniture offline, project by project.</h1>
 	<p class="muted">
-		Create projects, add item records, and store compressed photos locally. Export, passcode, and
-		reminders will build on this IndexedDB foundation in later phases.
+		Create projects, add item records, store compressed photos locally, and export each survey as a
+		ZIP with CSV, JSON, and images.
 	</p>
 </section>
 
@@ -108,6 +141,10 @@
 		</button>
 	</form>
 </section>
+
+{#if statusMessage}
+	<p class="success" role="status">{statusMessage}</p>
+{/if}
 
 {#if errorMessage}
 	<p class="error" role="alert">{errorMessage}</p>
@@ -155,10 +192,18 @@
 							>Open</a
 						>
 						<button
+							class="secondary"
+							type="button"
+							onclick={() => handleExportProject(project)}
+							disabled={exportingProjectId === project.id || deletingProjectId === project.id}
+						>
+							{exportingProjectId === project.id ? 'Exporting…' : 'Export ZIP'}
+						</button>
+						<button
 							class="danger"
 							type="button"
 							onclick={() => handleDeleteProject(project)}
-							disabled={deletingProjectId === project.id}
+							disabled={deletingProjectId === project.id || exportingProjectId === project.id}
 						>
 							{deletingProjectId === project.id ? 'Deleting…' : 'Delete'}
 						</button>
@@ -221,13 +266,23 @@
 		font-weight: 700;
 	}
 
+	.success,
 	.error {
-		border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
 		border-radius: 1rem;
 		padding: 0.9rem 1rem;
+		font-weight: 700;
+	}
+
+	.success {
+		border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+		background: var(--color-primary-soft);
+		color: var(--color-primary);
+	}
+
+	.error {
+		border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
 		background: var(--color-danger-soft);
 		color: var(--color-danger);
-		font-weight: 700;
 	}
 
 	.section-heading {
@@ -289,7 +344,6 @@
 
 	.project-actions {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
 		gap: 0.7rem;
 	}
 
@@ -323,7 +377,7 @@
 		}
 
 		.project-actions {
-			grid-template-columns: auto auto;
+			grid-template-columns: auto auto auto;
 		}
 	}
 </style>

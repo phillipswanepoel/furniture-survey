@@ -433,7 +433,6 @@ Run on a real iPhone/Safari before considering the MVP usable:
 - Search/filter review screen.
 - Backup reminders.
 - App-wide passcode gate.
-- Light/dark/system theme.
 - Mobile UI improvements.
 - Full Playwright flow tests.
 - Real iPhone manual testing.

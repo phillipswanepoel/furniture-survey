@@ -5,23 +5,37 @@
 	import { countSavedProjectItems, getDraftItem } from '$lib/itemStorage';
 	import { deleteProject, getProject } from '$lib/projectStorage';
 	import type { Item, Project } from '$lib/types';
+	import {
+		canShareZipFiles,
+		createProjectZip,
+		downloadBlob,
+		markProjectAsExported,
+		shareZipBlob
+	} from '$lib/zipExport';
 
 	let project = $state<Project | null>(null);
 	let draftItem = $state<Item | null>(null);
 	let itemCount = $state(0);
 	let isLoading = $state(true);
 	let isDeleting = $state(false);
+	let isExporting = $state(false);
+	let isSharing = $state(false);
+	let canShareExport = $state(false);
 	let errorMessage = $state('');
+	let actionErrorMessage = $state('');
+	let exportStatusMessage = $state('');
 
 	const projectId = $derived(page.params.projectId ?? '');
 
 	onMount(() => {
+		canShareExport = canShareZipFiles();
 		void loadProject();
 	});
 
 	async function loadProject() {
 		isLoading = true;
 		errorMessage = '';
+		actionErrorMessage = '';
 
 		try {
 			const existingProject = await getProject(projectId);
@@ -41,16 +55,64 @@
 		if (!confirm(`Delete “${project.name}” and all of its local data?`)) return;
 
 		isDeleting = true;
-		errorMessage = '';
+		actionErrorMessage = '';
 
 		try {
 			await deleteProject(project.id);
 			location.href = resolve('/');
 		} catch (error) {
 			console.error(error);
-			errorMessage = 'Could not delete project.';
+			actionErrorMessage = 'Could not delete project.';
 			isDeleting = false;
 		}
+	}
+
+	async function handleExportProject(mode: 'download' | 'share') {
+		if (!project) return;
+
+		const activeProject = project;
+		isExporting = mode === 'download';
+		isSharing = mode === 'share';
+		actionErrorMessage = '';
+		exportStatusMessage = '';
+
+		try {
+			const zipExport = await createProjectZip(activeProject.id);
+
+			if (mode === 'share') {
+				await shareZipBlob(zipExport.blob, zipExport.filename, `${activeProject.name} export`);
+			} else {
+				downloadBlob(zipExport.blob, zipExport.filename);
+			}
+
+			project = await markProjectAsExported(activeProject.id, {
+				itemCount: zipExport.metadata.itemCount,
+				exportedAt: zipExport.metadata.exportedAt
+			});
+			itemCount = zipExport.metadata.itemCount;
+			exportStatusMessage = `${mode === 'share' ? 'Shared' : 'Downloaded'} ${zipExport.filename}.`;
+		} catch (error) {
+			console.error(error);
+
+			if (isAbortError(error)) {
+				exportStatusMessage = 'Share cancelled.';
+			} else {
+				actionErrorMessage =
+					error instanceof Error ? error.message : 'Could not export this project.';
+			}
+		} finally {
+			isExporting = false;
+			isSharing = false;
+		}
+	}
+
+	function isAbortError(error: unknown) {
+		return (
+			typeof error === 'object' &&
+			error !== null &&
+			'name' in error &&
+			(error as { name?: string }).name === 'AbortError'
+		);
 	}
 
 	function formatDate(value: string) {
@@ -105,11 +167,19 @@
 		</div>
 	</section>
 
+	{#if exportStatusMessage}
+		<p class="success" role="status">{exportStatusMessage}</p>
+	{/if}
+
+	{#if actionErrorMessage}
+		<p class="error" role="alert">{actionErrorMessage}</p>
+	{/if}
+
 	<section class="card actions-card" aria-labelledby="actions-heading">
 		<div>
 			<p class="eyebrow">Workflow</p>
 			<h2 id="actions-heading">Project actions</h2>
-			<p class="muted">Add items and photos now. ZIP export arrives in phase 4.</p>
+			<p class="muted">Add items, review photos, then export CSV, JSON, and images as a ZIP.</p>
 		</div>
 
 		<div class="actions-grid">
@@ -125,8 +195,29 @@
 			>
 				Review items
 			</a>
-			<button class="secondary" type="button" disabled>Export ZIP · Phase 4</button>
-			<button class="danger" type="button" onclick={handleDeleteProject} disabled={isDeleting}>
+			<button
+				class="secondary"
+				type="button"
+				onclick={() => handleExportProject('download')}
+				disabled={isExporting || isSharing}
+			>
+				{isExporting ? 'Building ZIP…' : 'Download ZIP'}
+			</button>
+			<button
+				class="secondary"
+				type="button"
+				onclick={() => handleExportProject('share')}
+				disabled={!canShareExport || isExporting || isSharing}
+				title={canShareExport ? 'Share ZIP' : 'Sharing is not available in this browser'}
+			>
+				{isSharing ? 'Sharing…' : 'Share ZIP'}
+			</button>
+			<button
+				class="danger"
+				type="button"
+				onclick={handleDeleteProject}
+				disabled={isDeleting || isExporting || isSharing}
+			>
 				{isDeleting ? 'Deleting…' : 'Delete project'}
 			</button>
 		</div>
@@ -266,11 +357,23 @@
 		font-weight: 750;
 	}
 
+	.success,
 	.error {
-		border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+		border-radius: 1rem;
+		padding: 0.9rem 1rem;
+		font-weight: 800;
+	}
+
+	.success {
+		border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+		background: var(--color-primary-soft);
+		color: var(--color-primary);
+	}
+
+	.error {
+		border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
 		background: var(--color-danger-soft);
 		color: var(--color-danger);
-		font-weight: 800;
 	}
 
 	@media (min-width: 700px) {

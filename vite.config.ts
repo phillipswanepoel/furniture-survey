@@ -11,13 +11,13 @@ export default defineConfig({
 			includeAssets: ['robots.txt', 'icons/icon.svg'],
 			manifest: {
 				name: 'Furniture Survey',
-				short_name: 'Furniture',
-				description: 'Local-first furniture survey app for offline project and item records.',
+				short_name: 'Survey',
+				description: 'Offline furniture survey records and ZIP export.',
 				start_url: '/',
 				scope: '/',
 				display: 'standalone',
-				background_color: '#f7f3eb',
-				theme_color: '#274c45',
+				background_color: '#f5f2ea',
+				theme_color: '#f5f2ea',
 				icons: [
 					{
 						src: 'icons/icon.svg',

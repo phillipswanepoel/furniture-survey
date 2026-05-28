@@ -13,7 +13,8 @@ import {
 	getDraftItem,
 	getSavedItems,
 	ItemValidationError,
-	updateDraftItem
+	updateDraftItem,
+	updateSavedItem
 } from './itemStorage';
 import { createProject, updateProject } from './projectStorage';
 
@@ -156,8 +157,28 @@ describe('item storage', () => {
 		expect(draft?.status).toBe('draft');
 	});
 
-	it('deletes saved items and their related images', async () => {
+	it('edits saved items without changing the locked item number', async () => {
 		const project = await createProject({ name: 'Flat 7' }, database);
+		const draft = await createDraftItem(project.id, database);
+		await updateDraftItem(draft.id, { itemName: 'Cabinet', room: 'Storage' }, database);
+		const result = await finalizeDraftItem(draft.id, database);
+
+		const updatedItem = await updateSavedItem(
+			result.item.id,
+			{ itemName: 'Tall cabinet', room: 'Bedroom', quantity: 2 },
+			database
+		);
+
+		expect(updatedItem).toMatchObject({
+			itemNumber: 'STOR-001',
+			itemName: 'Tall cabinet',
+			room: 'Bedroom',
+			quantity: 2
+		});
+	});
+
+	it('deletes saved items and their related images', async () => {
+		const project = await createProject({ name: 'Flat 9' }, database);
 		const draft = await createDraftItem(project.id, database);
 		await updateDraftItem(draft.id, { itemName: 'Cabinet', room: 'Storage' }, database);
 		const result = await finalizeDraftItem(draft.id, database);
@@ -174,7 +195,7 @@ describe('item storage', () => {
 	});
 
 	it('discards draft items', async () => {
-		const project = await createProject({ name: 'Flat 8' }, database);
+		const project = await createProject({ name: 'Flat 10' }, database);
 		const draft = await createDraftItem(project.id, database);
 
 		await deleteDraftItem(draft.id, database);

@@ -2,25 +2,18 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import { countSavedProjectItems, getDraftItem } from '$lib/itemStorage';
+	import { getBackupReminder, type BackupReminder } from '$lib/backupReminders';
+	import { countSavedProjectItems } from '$lib/itemStorage';
 	import { deleteProject, getProject } from '$lib/projectStorage';
-	import type { Item, Project } from '$lib/types';
-	import {
-		canShareZipFiles,
-		createProjectZip,
-		downloadBlob,
-		markProjectAsExported,
-		shareZipBlob
-	} from '$lib/zipExport';
+	import type { Project } from '$lib/types';
+	import { createProjectZip, downloadBlob, markProjectAsExported } from '$lib/zipExport';
 
 	let project = $state<Project | null>(null);
-	let draftItem = $state<Item | null>(null);
 	let itemCount = $state(0);
+	let backupReminder = $state<BackupReminder | null>(null);
 	let isLoading = $state(true);
 	let isDeleting = $state(false);
 	let isExporting = $state(false);
-	let isSharing = $state(false);
-	let canShareExport = $state(false);
 	let errorMessage = $state('');
 	let actionErrorMessage = $state('');
 	let exportStatusMessage = $state('');
@@ -28,7 +21,6 @@
 	const projectId = $derived(page.params.projectId ?? '');
 
 	onMount(() => {
-		canShareExport = canShareZipFiles();
 		void loadProject();
 	});
 
@@ -41,7 +33,7 @@
 			const existingProject = await getProject(projectId);
 			project = existingProject ?? null;
 			itemCount = existingProject ? await countSavedProjectItems(existingProject.id) : 0;
-			draftItem = existingProject ? await getDraftItem(existingProject.id) : null;
+			backupReminder = existingProject ? getBackupReminder(existingProject, itemCount) : null;
 		} catch (error) {
 			console.error(error);
 			errorMessage = 'Could not load this project from local storage.';
@@ -67,59 +59,32 @@
 		}
 	}
 
-	async function handleExportProject(mode: 'download' | 'share') {
+	async function handleExportProject() {
 		if (!project) return;
 
 		const activeProject = project;
-		isExporting = mode === 'download';
-		isSharing = mode === 'share';
+		isExporting = true;
 		actionErrorMessage = '';
 		exportStatusMessage = '';
 
 		try {
 			const zipExport = await createProjectZip(activeProject.id);
-
-			if (mode === 'share') {
-				await shareZipBlob(zipExport.blob, zipExport.filename, `${activeProject.name} export`);
-			} else {
-				downloadBlob(zipExport.blob, zipExport.filename);
-			}
+			downloadBlob(zipExport.blob, zipExport.filename);
 
 			project = await markProjectAsExported(activeProject.id, {
 				itemCount: zipExport.metadata.itemCount,
 				exportedAt: zipExport.metadata.exportedAt
 			});
 			itemCount = zipExport.metadata.itemCount;
-			exportStatusMessage = `${mode === 'share' ? 'Shared' : 'Downloaded'} ${zipExport.filename}.`;
+			backupReminder = project ? getBackupReminder(project, itemCount) : null;
+			exportStatusMessage = `Exported ${zipExport.filename}.`;
 		} catch (error) {
 			console.error(error);
-
-			if (isAbortError(error)) {
-				exportStatusMessage = 'Share cancelled.';
-			} else {
-				actionErrorMessage =
-					error instanceof Error ? error.message : 'Could not export this project.';
-			}
+			actionErrorMessage =
+				error instanceof Error ? error.message : 'Could not export this project.';
 		} finally {
 			isExporting = false;
-			isSharing = false;
 		}
-	}
-
-	function isAbortError(error: unknown) {
-		return (
-			typeof error === 'object' &&
-			error !== null &&
-			'name' in error &&
-			(error as { name?: string }).name === 'AbortError'
-		);
-	}
-
-	function formatDate(value: string) {
-		return new Intl.DateTimeFormat(undefined, {
-			dateStyle: 'medium',
-			timeStyle: 'short'
-		}).format(new Date(value));
 	}
 </script>
 
@@ -137,35 +102,27 @@
 	<section class="card state-card">
 		<p class="eyebrow">Not found</p>
 		<h1>Project not found</h1>
-		<p class="muted">This project may have been deleted from this device.</p>
+		<p class="muted">It may have been deleted.</p>
 		<a class="button" href={resolve('/')}>Back to projects</a>
 	</section>
 {:else}
 	<section class="project-hero">
-		<p class="eyebrow">Project</p>
 		<h1>{project.name}</h1>
-		<p class="muted">
-			Created {formatDate(project.createdAt)} · Updated {formatDate(project.updatedAt)}
-		</p>
+		<p class="muted">Items added: {itemCount}</p>
 	</section>
 
-	<section class="stats" aria-label="Project summary">
-		<div class="card stat-card">
-			<span>{itemCount}</span>
-			<strong>Items saved</strong>
-			<small>{draftItem ? 'Draft in progress.' : 'Ready for review.'}</small>
-		</div>
-		<div class="card stat-card">
-			<span>{project.nextItemSequence}</span>
-			<strong>Next sequence</strong>
-			<small>Global per project.</small>
-		</div>
-		<div class="card stat-card">
-			<span>{project.lastDimensionUnit}</span>
-			<strong>Default unit</strong>
-			<small>Carried into new drafts.</small>
-		</div>
-	</section>
+	{#if backupReminder}
+		<section class="card backup-card" aria-labelledby="backup-heading">
+			<div>
+				<p class="eyebrow">Backup reminder</p>
+				<h2 id="backup-heading">Export your latest data</h2>
+				<p>{backupReminder.message}</p>
+			</div>
+			<button class="secondary" type="button" onclick={handleExportProject} disabled={isExporting}>
+				{isExporting ? 'Exporting…' : 'Export ZIP'}
+			</button>
+		</section>
+	{/if}
 
 	{#if exportStatusMessage}
 		<p class="success" role="status">{exportStatusMessage}</p>
@@ -176,145 +133,86 @@
 	{/if}
 
 	<section class="card actions-card" aria-labelledby="actions-heading">
-		<div>
-			<p class="eyebrow">Workflow</p>
-			<h2 id="actions-heading">Project actions</h2>
-			<p class="muted">Add items, review photos, then export CSV, JSON, and images as a ZIP.</p>
-		</div>
+		<h2 id="actions-heading">Actions</h2>
 
 		<div class="actions-grid">
 			<a
 				class="button"
 				href={resolve('/projects/[projectId]/items/new', { projectId: project.id })}
 			>
-				{draftItem ? 'Continue draft' : 'Add item'}
+				Continue survey
 			</a>
+			<button class="secondary" type="button" onclick={handleExportProject} disabled={isExporting}>
+				{isExporting ? 'Exporting…' : 'Export'}
+			</button>
+			<button
+				class="danger"
+				type="button"
+				onclick={handleDeleteProject}
+				disabled={isDeleting || isExporting}
+			>
+				{isDeleting ? 'Deleting…' : 'Delete'}
+			</button>
 			<a
 				class="button secondary"
 				href={resolve('/projects/[projectId]/items', { projectId: project.id })}
 			>
 				Review items
 			</a>
-			<button
-				class="secondary"
-				type="button"
-				onclick={() => handleExportProject('download')}
-				disabled={isExporting || isSharing}
-			>
-				{isExporting ? 'Building ZIP…' : 'Download ZIP'}
-			</button>
-			<button
-				class="secondary"
-				type="button"
-				onclick={() => handleExportProject('share')}
-				disabled={!canShareExport || isExporting || isSharing}
-				title={canShareExport ? 'Share ZIP' : 'Sharing is not available in this browser'}
-			>
-				{isSharing ? 'Sharing…' : 'Share ZIP'}
-			</button>
-			<button
-				class="danger"
-				type="button"
-				onclick={handleDeleteProject}
-				disabled={isDeleting || isExporting || isSharing}
-			>
-				{isDeleting ? 'Deleting…' : 'Delete project'}
-			</button>
 		</div>
-	</section>
-
-	<section class="card data-card" aria-labelledby="storage-heading">
-		<p class="eyebrow">IndexedDB record</p>
-		<h2 id="storage-heading">Project storage state</h2>
-		<dl>
-			<div>
-				<dt>Project ID</dt>
-				<dd>{project.id}</dd>
-			</div>
-			<div>
-				<dt>Last room</dt>
-				<dd>{project.lastRoom ?? 'None yet'}</dd>
-			</div>
-			<div>
-				<dt>Last exported</dt>
-				<dd>{project.lastExportedAt ? formatDate(project.lastExportedAt) : 'Never'}</dd>
-			</div>
-			<div>
-				<dt>Items at last export</dt>
-				<dd>{project.itemCountAtLastExport}</dd>
-			</div>
-		</dl>
 	</section>
 {/if}
 
 <style>
-	.back-link {
-		display: inline-flex;
-		margin: 0.25rem 0 1rem;
-		color: var(--color-muted);
-		font-weight: 800;
-		text-decoration: none;
-	}
-
 	.project-hero {
-		padding: 0.75rem 0 1.25rem;
+		padding: 0.7rem 0 1.15rem;
 	}
 
 	.project-hero h1,
 	.state-card h1 {
 		max-width: 13ch;
 		margin: 0;
-		font-size: clamp(2.4rem, 14vw, 4.5rem);
-		line-height: 0.95;
-		letter-spacing: -0.07em;
+		font-size: clamp(2.45rem, 14vw, 4.8rem);
+		font-weight: 700;
+		line-height: 0.92;
+		letter-spacing: -0.09em;
 	}
 
 	.project-hero .muted {
-		margin-top: 0.8rem;
+		margin-top: 0.75rem;
 	}
 
-	.stats,
 	.actions-grid {
 		display: grid;
-		gap: 0.85rem;
+		gap: 0.8rem;
 	}
 
-	.stats {
-		grid-template-columns: 1fr;
-		margin-bottom: 1rem;
-	}
-
-	.stat-card,
 	.actions-card,
-	.data-card,
+	.backup-card,
 	.state-card {
 		padding: 1rem;
 	}
 
-	.stat-card {
-		display: grid;
-		gap: 0.2rem;
-	}
-
-	.stat-card span {
-		font-size: 2rem;
-		font-weight: 900;
-		letter-spacing: -0.05em;
-	}
-
-	.stat-card strong {
-		font-size: 0.95rem;
-	}
-
-	.stat-card small {
-		color: var(--color-muted);
-	}
-
-	.actions-card,
-	.data-card {
+	.actions-card {
 		display: grid;
 		gap: 1rem;
 		margin-top: 1rem;
+	}
+
+	.backup-card {
+		display: grid;
+		gap: 1rem;
+		margin-bottom: 1rem;
+		background: linear-gradient(135deg, rgb(247 223 226 / 0.76), rgb(255 254 250 / 0.54));
+	}
+
+	.backup-card h2,
+	.backup-card p {
+		margin: 0;
+	}
+
+	.backup-card button {
+		width: 100%;
 	}
 
 	h2,
@@ -323,7 +221,9 @@
 	}
 
 	h2 {
-		margin-bottom: 0.4rem;
+		margin-bottom: 0;
+		font-size: 1.18rem;
+		font-weight: 650;
 	}
 
 	.actions-grid button,
@@ -331,67 +231,20 @@
 		width: 100%;
 	}
 
-	.data-card dl {
-		display: grid;
-		gap: 0.75rem;
-		margin: 0;
-	}
-
-	.data-card dl div {
-		min-width: 0;
-		border-radius: 0.9rem;
-		padding: 0.75rem;
-		background: var(--color-primary-soft);
-	}
-
-	dt {
-		color: var(--color-muted);
-		font-size: 0.75rem;
-		font-weight: 800;
-		text-transform: uppercase;
-	}
-
-	dd {
-		margin: 0.25rem 0 0;
-		overflow-wrap: anywhere;
-		font-weight: 750;
-	}
-
-	.success,
-	.error {
-		border-radius: 1rem;
-		padding: 0.9rem 1rem;
-		font-weight: 800;
-	}
-
-	.success {
-		border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
-		background: var(--color-primary-soft);
-		color: var(--color-primary);
-	}
-
-	.error {
-		border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
-		background: var(--color-danger-soft);
-		color: var(--color-danger);
-	}
-
 	@media (min-width: 700px) {
-		.stats {
-			grid-template-columns: repeat(3, 1fr);
-		}
-
-		.actions-card {
+		.actions-card,
+		.backup-card {
 			grid-template-columns: 0.9fr 1.1fr;
 			align-items: center;
 		}
 
-		.actions-grid {
-			grid-template-columns: repeat(2, 1fr);
+		.backup-card button {
+			width: auto;
+			justify-self: end;
 		}
 
-		.data-card dl {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
+		.actions-grid {
+			grid-template-columns: repeat(2, 1fr);
 		}
 	}
 </style>

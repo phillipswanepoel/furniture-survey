@@ -242,10 +242,64 @@ export async function countSavedProjectItems(
 		.count();
 }
 
+export async function updateSavedItem(
+	id: string,
+	input: UpdateItemFieldsInput,
+	database: FurnitureSurveyDatabase = defaultDb
+) {
+	return database.transaction('rw', database.projects, database.items, async () => {
+		const existingItem = await database.items.get(id);
+
+		if (!existingItem) {
+			throw new Error('Item not found');
+		}
+
+		if (existingItem.status !== 'saved') {
+			throw new Error('Only saved items can be edited here');
+		}
+
+		const candidate: Item = {
+			...existingItem,
+			...input,
+			itemName:
+				input.itemName === undefined ? existingItem.itemName : normalizeItemText(input.itemName),
+			room: input.room === undefined ? existingItem.room : normalizeItemText(input.room)
+		};
+		const validation = validateItemForSave(candidate);
+
+		if (!validation.valid) {
+			throw new ItemValidationError(validation.errors);
+		}
+
+		const updatedAt = nowIso();
+		const changes: Partial<Item> = {
+			itemName: candidate.itemName,
+			room: candidate.room,
+			quantity: candidate.quantity,
+			length: candidate.length,
+			width: candidate.width,
+			height: candidate.height,
+			dimensionUnit: candidate.dimensionUnit,
+			notes: candidate.notes,
+			updatedAt
+		};
+
+		await database.items.update(existingItem.id, changes);
+		await database.projects.update(existingItem.projectId, { updatedAt });
+
+		return { ...existingItem, ...changes };
+	});
+}
+
 export async function deleteItem(id: string, database: FurnitureSurveyDatabase = defaultDb) {
-	await database.transaction('rw', database.items, database.images, async () => {
+	await database.transaction('rw', database.projects, database.items, database.images, async () => {
+		const item = await database.items.get(id);
 		await database.images.where('itemId').equals(id).delete();
 		await database.items.delete(id);
+
+		if (item) {
+			await database.projects.update(item.projectId, { updatedAt: nowIso() });
+		}
 	});
 }
 

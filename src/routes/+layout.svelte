@@ -1,17 +1,83 @@
 <script lang="ts">
+	import '@fontsource/monaspace-argon/latin-400.css';
+	import '@fontsource/monaspace-argon/latin-500.css';
+	import '@fontsource/monaspace-argon/latin-600.css';
+	import '@fontsource/monaspace-argon/latin-700.css';
 	import { resolve } from '$app/paths';
 	import favicon from '$lib/assets/favicon.svg';
-	import { onMount } from 'svelte';
+	import { DEFAULT_APP_SETTINGS } from '$lib/db';
+	import { checkPasscode } from '$lib/passcode';
+	import { getAppSettings } from '$lib/projectStorage';
+	import { applyThemePreference } from '$lib/theme';
+	import type { AppSettings } from '$lib/types';
+	import { onDestroy, onMount } from 'svelte';
 
 	let { children } = $props();
 
-	onMount(() => {
-		if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+	let settings = $state<AppSettings>({ ...DEFAULT_APP_SETTINGS });
+	let settingsLoaded = $state(false);
+	let unlocked = $state(true);
+	let passcodeInput = $state('');
+	let passcodeError = $state('');
 
-		void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error) => {
-			console.error('Service worker registration failed', error);
-		});
+	onMount(() => {
+		void loadSettings();
+		window.addEventListener('furniture-survey:settings-changed', loadSettings);
+
+		if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+			void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error) => {
+				console.error('Service worker registration failed', error);
+			});
+		}
 	});
+
+	onDestroy(() => {
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('furniture-survey:settings-changed', loadSettings);
+		}
+	});
+
+	async function loadSettings() {
+		try {
+			settings = await getAppSettings();
+			applyThemePreference(settings.theme);
+			unlocked = !settings.passcodeEnabled || !settings.passcodeHash || isSessionUnlocked(settings);
+		} catch (error) {
+			console.error('Could not load app settings', error);
+			settings = { ...DEFAULT_APP_SETTINGS };
+			unlocked = true;
+		} finally {
+			settingsLoaded = true;
+		}
+	}
+
+	function isSessionUnlocked(activeSettings: AppSettings) {
+		if (typeof sessionStorage === 'undefined') return false;
+		return sessionStorage.getItem('furniture-survey-unlocked-hash') === activeSettings.passcodeHash;
+	}
+
+	function rememberUnlockedSession(activeSettings: AppSettings) {
+		if (typeof sessionStorage === 'undefined' || !activeSettings.passcodeHash) return;
+		sessionStorage.setItem('furniture-survey-unlocked-hash', activeSettings.passcodeHash);
+	}
+
+	async function handleUnlock(event: SubmitEvent) {
+		event.preventDefault();
+		passcodeError = '';
+
+		try {
+			if (await checkPasscode(passcodeInput, settings.passcodeHash)) {
+				rememberUnlockedSession(settings);
+				unlocked = true;
+				passcodeInput = '';
+			} else {
+				passcodeError = 'Passcode is not correct.';
+			}
+		} catch (error) {
+			console.error(error);
+			passcodeError = 'Could not check the passcode on this device.';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -22,15 +88,38 @@
 	<header class="site-header">
 		<a class="brand" href={resolve('/')} aria-label="Furniture Survey home">
 			<span class="brand-mark">FS</span>
-			<span>
-				<strong>Furniture Survey</strong>
-				<small>Local-first PWA</small>
-			</span>
+			<strong>Survey</strong>
 		</a>
 	</header>
 
 	<main>
-		{@render children()}
+		{#if !settingsLoaded}
+			<section class="card lock-card">Loading…</section>
+		{:else if !unlocked}
+			<section class="card lock-card" aria-labelledby="lock-heading">
+				<p class="eyebrow">Locked</p>
+				<h1 id="lock-heading">Enter passcode</h1>
+				<p class="muted">This protects casual access on this device only.</p>
+
+				<form class="lock-form" onsubmit={handleUnlock}>
+					<label for="app-passcode">Passcode</label>
+					<input
+						id="app-passcode"
+						type="password"
+						bind:value={passcodeInput}
+						autocomplete="current-password"
+						inputmode="numeric"
+					/>
+					<button type="submit" disabled={!passcodeInput.trim()}>Unlock</button>
+				</form>
+
+				{#if passcodeError}
+					<p class="error" role="alert">{passcodeError}</p>
+				{/if}
+			</section>
+		{:else}
+			{@render children()}
+		{/if}
 	</main>
 </div>
 
@@ -41,30 +130,71 @@
 
 	:global(:root) {
 		font-family:
-			Inter,
-			ui-sans-serif,
-			system-ui,
-			-apple-system,
-			BlinkMacSystemFont,
-			'Segoe UI',
-			sans-serif;
-		color: #1d2522;
-		background: #f7f3eb;
+			'Monaspace Argon', ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+		color: #183b46;
+		background: #f5f2ea;
 		font-synthesis: none;
 		text-rendering: optimizeLegibility;
 		-webkit-font-smoothing: antialiased;
-		--color-page: #f7f3eb;
-		--color-surface: #fffaf2;
-		--color-surface-strong: #ffffff;
-		--color-text: #1d2522;
-		--color-muted: #68746f;
-		--color-border: #ded6c8;
-		--color-primary: #274c45;
-		--color-primary-strong: #173a34;
-		--color-primary-soft: #dfeae6;
-		--color-danger: #a73737;
-		--color-danger-soft: #f8dddd;
-		--shadow-card: 0 18px 50px rgb(39 76 69 / 0.12);
+		--color-page: #f5f2ea;
+		--color-surface: rgb(255 252 246 / 0.74);
+		--color-surface-strong: rgb(255 254 250 / 0.92);
+		--color-text: #183b46;
+		--color-muted: #6d7f83;
+		--color-border: rgb(95 125 128 / 0.16);
+		--color-primary: #2f6472;
+		--color-primary-strong: #183b46;
+		--color-primary-soft: #dceff0;
+		--color-secondary-soft: #f1e0ec;
+		--color-warm-soft: #f7e7cf;
+		--color-cool-soft: #dfe9fb;
+		--color-danger: #a34f5c;
+		--color-danger-soft: #f7dfe2;
+		--blur-surface: blur(22px) saturate(1.15);
+		--radius-card: 1.55rem;
+		--shadow-card: 0 24px 70px rgb(61 84 95 / 0.11);
+	}
+
+	:global(:root[data-theme='dark']) {
+		color: #f2f6f4;
+		background: #132329;
+		--color-page: #132329;
+		--color-surface: rgb(27 46 54 / 0.78);
+		--color-surface-strong: rgb(31 53 61 / 0.94);
+		--color-text: #f2f6f4;
+		--color-muted: #a9bdc0;
+		--color-border: rgb(196 220 221 / 0.16);
+		--color-primary: #9fd0d8;
+		--color-primary-strong: #d7f0f2;
+		--color-primary-soft: #264952;
+		--color-secondary-soft: #4a3045;
+		--color-warm-soft: #59452d;
+		--color-cool-soft: #263a55;
+		--color-danger: #f0a8b2;
+		--color-danger-soft: #54313a;
+		--shadow-card: 0 24px 70px rgb(0 0 0 / 0.24);
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:global(:root[data-theme='system']) {
+			color: #f2f6f4;
+			background: #132329;
+			--color-page: #132329;
+			--color-surface: rgb(27 46 54 / 0.78);
+			--color-surface-strong: rgb(31 53 61 / 0.94);
+			--color-text: #f2f6f4;
+			--color-muted: #a9bdc0;
+			--color-border: rgb(196 220 221 / 0.16);
+			--color-primary: #9fd0d8;
+			--color-primary-strong: #d7f0f2;
+			--color-primary-soft: #264952;
+			--color-secondary-soft: #4a3045;
+			--color-warm-soft: #59452d;
+			--color-cool-soft: #263a55;
+			--color-danger: #f0a8b2;
+			--color-danger-soft: #54313a;
+			--shadow-card: 0 24px 70px rgb(0 0 0 / 0.24);
+		}
 	}
 
 	:global(body) {
@@ -72,7 +202,9 @@
 		min-height: 100vh;
 		margin: 0;
 		background:
-			radial-gradient(circle at top left, rgb(216 185 111 / 0.35), transparent 32rem),
+			radial-gradient(circle at 8% 0%, rgb(199 224 225 / 0.95), transparent 25rem),
+			radial-gradient(circle at 95% 12%, rgb(248 218 229 / 0.85), transparent 26rem),
+			radial-gradient(circle at 45% 105%, rgb(246 224 188 / 0.72), transparent 30rem),
 			var(--color-page);
 		color: var(--color-text);
 	}
@@ -91,41 +223,56 @@
 	:global(button),
 	:global(.button) {
 		display: inline-flex;
-		min-height: 44px;
+		min-height: 46px;
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
-		border: 0;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
 		border-radius: 999px;
-		padding: 0.75rem 1rem;
-		background: var(--color-primary);
-		color: white;
-		font-weight: 700;
+		padding: 0.8rem 1.05rem;
+		background: linear-gradient(135deg, #4f8b98, var(--color-primary));
+		box-shadow: 0 12px 26px rgb(47 100 114 / 0.2);
+		color: #fffdf8;
+		font-weight: 650;
 		line-height: 1;
 		text-decoration: none;
 		cursor: pointer;
+		transition:
+			transform 160ms ease,
+			box-shadow 160ms ease,
+			background 160ms ease;
 	}
 
 	:global(button:hover),
 	:global(.button:hover) {
-		background: var(--color-primary-strong);
+		background: linear-gradient(135deg, #5d9ca8, var(--color-primary-strong));
+		box-shadow: 0 16px 34px rgb(47 100 114 / 0.24);
+		transform: translateY(-1px);
 	}
 
 	:global(button:disabled),
 	:global(.button[aria-disabled='true']) {
 		cursor: not-allowed;
-		opacity: 0.55;
+		opacity: 0.52;
+		transform: none;
 	}
 
 	:global(.button.secondary),
 	:global(button.secondary) {
-		background: var(--color-primary-soft);
+		background: rgb(255 254 250 / 0.62);
+		box-shadow: none;
 		color: var(--color-primary);
+	}
+
+	:global(.button.secondary:hover),
+	:global(button.secondary:hover) {
+		background: var(--color-primary-soft);
 	}
 
 	:global(.button.danger),
 	:global(button.danger) {
 		background: var(--color-danger-soft);
+		box-shadow: none;
 		color: var(--color-danger);
 	}
 
@@ -133,11 +280,12 @@
 	:global(select),
 	:global(textarea) {
 		width: 100%;
-		min-height: 48px;
+		min-height: 50px;
 		border: 1px solid var(--color-border);
-		border-radius: 1rem;
-		padding: 0.8rem 0.95rem;
-		background: var(--color-surface-strong);
+		border-radius: 1.15rem;
+		padding: 0.85rem 1rem;
+		background: rgb(255 254 250 / 0.7);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7);
 		color: var(--color-text);
 	}
 
@@ -145,19 +293,24 @@
 		resize: vertical;
 	}
 
+	:global(input::placeholder),
+	:global(textarea::placeholder) {
+		color: color-mix(in srgb, var(--color-muted) 72%, white);
+	}
+
 	:global(input:focus),
 	:global(select:focus),
 	:global(textarea:focus) {
-		outline: 3px solid rgb(39 76 69 / 0.2);
-		border-color: var(--color-primary);
+		border-color: color-mix(in srgb, var(--color-primary) 55%, white);
+		outline: 4px solid rgb(143 189 196 / 0.24);
 	}
 
 	:global(.eyebrow) {
-		margin: 0 0 0.4rem;
+		margin: 0 0 0.45rem;
 		color: var(--color-primary);
-		font-size: 0.78rem;
-		font-weight: 800;
-		letter-spacing: 0.08em;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
 	}
 
@@ -167,9 +320,39 @@
 
 	:global(.card) {
 		border: 1px solid var(--color-border);
-		border-radius: 1.25rem;
+		border-radius: var(--radius-card);
 		background: var(--color-surface);
 		box-shadow: var(--shadow-card);
+		backdrop-filter: var(--blur-surface);
+	}
+
+	:global(.back-link) {
+		display: inline-flex;
+		margin: 0.1rem 0 1rem;
+		color: var(--color-muted);
+		font-size: 0.9rem;
+		font-weight: 650;
+		text-decoration: none;
+	}
+
+	:global(.success),
+	:global(.error) {
+		border-radius: 1.15rem;
+		padding: 0.85rem 1rem;
+		font-weight: 650;
+		backdrop-filter: var(--blur-surface);
+	}
+
+	:global(.success) {
+		border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+		background: rgb(220 239 240 / 0.74);
+		color: var(--color-primary);
+	}
+
+	:global(.error) {
+		border: 1px solid color-mix(in srgb, var(--color-danger) 24%, transparent);
+		background: rgb(247 223 226 / 0.78);
+		color: var(--color-danger);
 	}
 
 	.app-frame {
@@ -182,76 +365,69 @@
 		position: sticky;
 		top: 0;
 		z-index: 10;
-		margin: 0 -1rem 1rem;
-		padding: 0.9rem 1rem;
-		background: color-mix(in srgb, var(--color-page) 86%, transparent);
-		backdrop-filter: blur(18px);
+		margin: 0 -1rem 0.8rem;
+		padding: 0.85rem 1rem;
+		background: linear-gradient(180deg, rgb(245 242 234 / 0.82), rgb(245 242 234 / 0.48));
+		backdrop-filter: blur(24px) saturate(1.18);
 	}
 
 	.brand {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.7rem;
+		gap: 0.65rem;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		padding: 0.38rem 0.8rem 0.38rem 0.42rem;
+		background: rgb(255 254 250 / 0.58);
+		box-shadow: 0 12px 36px rgb(72 94 104 / 0.08);
 		text-decoration: none;
+		backdrop-filter: var(--blur-surface);
 	}
 
 	.brand-mark {
 		display: grid;
-		width: 2.55rem;
-		height: 2.55rem;
+		width: 2.2rem;
+		height: 2.2rem;
 		place-items: center;
-		border-radius: 0.85rem;
-		background: var(--color-primary);
-		color: #fff;
-		font-size: 0.95rem;
-		font-weight: 900;
-		letter-spacing: 0.04em;
-	}
-
-	.brand strong,
-	.brand small {
-		display: block;
+		border-radius: 999px;
+		background: linear-gradient(135deg, #cfe6e8, #f5dce8 55%, #f5e2bd);
+		color: var(--color-primary-strong);
+		font-size: 0.78rem;
+		font-weight: 750;
+		letter-spacing: -0.03em;
 	}
 
 	.brand strong {
-		font-size: 0.98rem;
-	}
-
-	.brand small {
-		margin-top: 0.1rem;
-		color: var(--color-muted);
-		font-size: 0.75rem;
+		display: block;
+		font-size: 0.9rem;
+		font-weight: 650;
 	}
 
 	main {
 		padding-bottom: env(safe-area-inset-bottom);
 	}
 
-	@media (prefers-color-scheme: dark) {
-		:global(:root) {
-			--color-page: #111815;
-			--color-surface: #19211e;
-			--color-surface-strong: #202a26;
-			--color-text: #eef4ef;
-			--color-muted: #a8b4ae;
-			--color-border: #35413d;
-			--color-primary: #8fc7b8;
-			--color-primary-strong: #a9d8cc;
-			--color-primary-soft: #243a35;
-			--color-danger: #ffb4ab;
-			--color-danger-soft: #402222;
-			--shadow-card: 0 18px 50px rgb(0 0 0 / 0.28);
-		}
+	.lock-card {
+		display: grid;
+		gap: 1rem;
+		max-width: 28rem;
+		margin: 12vh auto 0;
+		padding: 1.15rem;
+	}
 
-		:global(body) {
-			background:
-				radial-gradient(circle at top left, rgb(143 199 184 / 0.18), transparent 30rem),
-				var(--color-page);
-		}
+	.lock-card h1 {
+		margin: 0;
+		font-size: clamp(2.2rem, 12vw, 4rem);
+		line-height: 0.95;
+		letter-spacing: -0.08em;
+	}
 
-		:global(button),
-		:global(.button) {
-			color: #10211d;
-		}
+	.lock-form {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	.lock-form label {
+		font-weight: 650;
 	}
 </style>

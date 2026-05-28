@@ -1,8 +1,19 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
-	import { createProject, deleteProject, getProjects } from '$lib/projectStorage';
-	import type { Project } from '$lib/types';
+	import { getBackupReminder, type BackupReminder } from '$lib/backupReminders';
+	import { DEFAULT_APP_SETTINGS } from '$lib/db';
+	import { countSavedProjectItems } from '$lib/itemStorage';
+	import { createPasscodeHash, validatePasscode } from '$lib/passcode';
+	import {
+		createProject,
+		deleteProject,
+		getAppSettings,
+		getProjects,
+		saveAppSettings
+	} from '$lib/projectStorage';
+	import { applyThemePreference, isThemePreference } from '$lib/theme';
+	import type { AppSettings, Project, ThemePreference } from '$lib/types';
 
 	let projects = $state<Project[]>([]);
 	let projectName = $state('');
@@ -12,9 +23,19 @@
 	let exportingProjectId = $state<string | null>(null);
 	let errorMessage = $state('');
 	let statusMessage = $state('');
+	let settingsStatusMessage = $state('');
+	let settingsErrorMessage = $state('');
+	let appSettings = $state<AppSettings>({ ...DEFAULT_APP_SETTINGS });
+	let selectedTheme = $state<ThemePreference>('system');
+	let newPasscode = $state('');
+	let isSavingSettings = $state(false);
+	let projectMeta = $state<Record<string, { itemCount: number; reminder: BackupReminder | null }>>(
+		{}
+	);
 
 	onMount(() => {
 		void loadProjects();
+		void loadSettings();
 	});
 
 	async function loadProjects() {
@@ -24,11 +45,112 @@
 
 		try {
 			projects = await getProjects();
+			await loadProjectMeta(projects);
 		} catch (error) {
 			console.error(error);
 			errorMessage = 'Could not load projects from this device.';
 		} finally {
 			isLoading = false;
+		}
+	}
+
+	async function loadProjectMeta(activeProjects: Project[]) {
+		const entries = await Promise.all(
+			activeProjects.map(async (project) => {
+				const itemCount = await countSavedProjectItems(project.id);
+				return [
+					project.id,
+					{ itemCount, reminder: getBackupReminder(project, itemCount) }
+				] as const;
+			})
+		);
+
+		projectMeta = Object.fromEntries(entries);
+	}
+
+	async function loadSettings() {
+		settingsErrorMessage = '';
+
+		try {
+			appSettings = await getAppSettings();
+			selectedTheme = appSettings.theme;
+			applyThemePreference(appSettings.theme);
+		} catch (error) {
+			console.error(error);
+			settingsErrorMessage = 'Could not load settings.';
+		}
+	}
+
+	function notifySettingsChanged() {
+		window.dispatchEvent(new CustomEvent('furniture-survey:settings-changed'));
+	}
+
+	async function handleThemeChange(event: Event) {
+		const select = event.currentTarget;
+		if (!(select instanceof HTMLSelectElement) || !isThemePreference(select.value)) return;
+
+		selectedTheme = select.value;
+		await saveSettings({ ...appSettings, theme: selectedTheme }, 'Theme saved.');
+	}
+
+	async function handleSetPasscode(event: SubmitEvent) {
+		event.preventDefault();
+		const validationError = validatePasscode(newPasscode);
+
+		if (validationError) {
+			settingsErrorMessage = validationError;
+			return;
+		}
+
+		try {
+			const passcodeHash = await createPasscodeHash(newPasscode);
+			const saved = await saveSettings(
+				{ ...appSettings, passcodeEnabled: true, passcodeHash },
+				'Passcode enabled.'
+			);
+
+			if (!saved) return;
+
+			newPasscode = '';
+
+			if (typeof sessionStorage !== 'undefined') {
+				sessionStorage.setItem('furniture-survey-unlocked-hash', passcodeHash);
+			}
+		} catch (error) {
+			console.error(error);
+			settingsErrorMessage = error instanceof Error ? error.message : 'Could not save passcode.';
+		}
+	}
+
+	async function handleDisablePasscode() {
+		if (!confirm('Disable the app passcode on this device?')) return;
+		const saved = await saveSettings(
+			{ ...appSettings, passcodeEnabled: false, passcodeHash: null },
+			'Passcode disabled.'
+		);
+		if (saved && typeof sessionStorage !== 'undefined') {
+			sessionStorage.removeItem('furniture-survey-unlocked-hash');
+		}
+	}
+
+	async function saveSettings(nextSettings: AppSettings, message: string) {
+		isSavingSettings = true;
+		settingsErrorMessage = '';
+		settingsStatusMessage = '';
+
+		try {
+			appSettings = await saveAppSettings(nextSettings);
+			selectedTheme = appSettings.theme;
+			applyThemePreference(appSettings.theme);
+			settingsStatusMessage = message;
+			notifySettingsChanged();
+			return true;
+		} catch (error) {
+			console.error(error);
+			settingsErrorMessage = 'Could not save settings.';
+			return false;
+		} finally {
+			isSavingSettings = false;
 		}
 	}
 
@@ -42,6 +164,7 @@
 			await createProject({ name: projectName });
 			projectName = '';
 			projects = await getProjects();
+			await loadProjectMeta(projects);
 		} catch (error) {
 			console.error(error);
 			errorMessage = error instanceof Error ? error.message : 'Could not create project.';
@@ -60,6 +183,7 @@
 		try {
 			await deleteProject(project.id);
 			projects = projects.filter((existingProject) => existingProject.id !== project.id);
+			await loadProjectMeta(projects);
 		} catch (error) {
 			console.error(error);
 			errorMessage = 'Could not delete project.';
@@ -87,7 +211,8 @@
 			projects = projects.map((existingProject) =>
 				existingProject.id === project.id ? updatedProject : existingProject
 			);
-			statusMessage = `Downloaded ${zipExport.filename}.`;
+			await loadProjectMeta(projects);
+			statusMessage = `Exported ${zipExport.filename}.`;
 		} catch (error) {
 			console.error(error);
 			errorMessage = error instanceof Error ? error.message : 'Could not export project.';
@@ -95,52 +220,90 @@
 			exportingProjectId = null;
 		}
 	}
-
-	function formatDate(value: string) {
-		return new Intl.DateTimeFormat(undefined, {
-			dateStyle: 'medium',
-			timeStyle: 'short'
-		}).format(new Date(value));
-	}
 </script>
 
 <svelte:head>
-	<title>Furniture Survey</title>
-	<meta
-		name="description"
-		content="Create local furniture survey projects that are stored on this device."
-	/>
+	<title>Furniture surveyor</title>
+	<meta name="description" content="Create furniture survey projects on this device." />
 </svelte:head>
 
 <section class="hero">
-	<p class="eyebrow">Local-first survey</p>
-	<h1>Survey furniture offline, project by project.</h1>
-	<p class="muted">
-		Create projects, add item records, store compressed photos locally, and export each survey as a
-		ZIP with CSV, JSON, and images.
-	</p>
+	<h1>Furniture surveyor</h1>
 </section>
 
 <section class="card create-card" aria-labelledby="create-project-heading">
-	<div>
-		<p class="eyebrow">New project</p>
-		<h2 id="create-project-heading">Start a survey</h2>
-	</div>
+	<h2 id="create-project-heading">New project</h2>
 
 	<form onsubmit={handleCreateProject}>
-		<label for="project-name">Project name</label>
 		<input
 			id="project-name"
 			bind:value={projectName}
 			autocomplete="off"
 			placeholder="e.g. 24 High Street"
+			aria-label="Name"
 			disabled={isSaving}
 		/>
 		<button type="submit" disabled={isSaving || !projectName.trim()}>
-			{isSaving ? 'Creating…' : 'Create project'}
+			{isSaving ? 'Creating…' : 'Create'}
 		</button>
 	</form>
 </section>
+
+<section class="card settings-card" aria-labelledby="settings-heading">
+	<div>
+		<h2 id="settings-heading">Settings</h2>
+		<p class="muted">Theme and simple on-device passcode.</p>
+	</div>
+
+	<div class="settings-grid">
+		<label class="field" for="theme-select">
+			<span>Theme</span>
+			<select id="theme-select" bind:value={selectedTheme} onchange={handleThemeChange}>
+				<option value="system">System</option>
+				<option value="light">Light</option>
+				<option value="dark">Dark</option>
+			</select>
+		</label>
+
+		<form class="passcode-form" onsubmit={handleSetPasscode}>
+			<label for="new-passcode"
+				>{appSettings.passcodeEnabled ? 'Change passcode' : 'Set passcode'}</label
+			>
+			<div class="passcode-row">
+				<input
+					id="new-passcode"
+					type="password"
+					bind:value={newPasscode}
+					autocomplete="new-password"
+					placeholder="At least 4 characters"
+					disabled={isSavingSettings}
+				/>
+				<button type="submit" disabled={isSavingSettings || !newPasscode.trim()}>
+					{appSettings.passcodeEnabled ? 'Change' : 'Enable'}
+				</button>
+			</div>
+		</form>
+
+		{#if appSettings.passcodeEnabled}
+			<button
+				class="danger disable-passcode"
+				type="button"
+				onclick={handleDisablePasscode}
+				disabled={isSavingSettings}
+			>
+				Disable passcode
+			</button>
+		{/if}
+	</div>
+</section>
+
+{#if settingsStatusMessage}
+	<p class="success" role="status">{settingsStatusMessage}</p>
+{/if}
+
+{#if settingsErrorMessage}
+	<p class="error" role="alert">{settingsErrorMessage}</p>
+{/if}
 
 {#if statusMessage}
 	<p class="success" role="status">{statusMessage}</p>
@@ -152,10 +315,7 @@
 
 <section class="projects" aria-labelledby="projects-heading">
 	<div class="section-heading">
-		<div>
-			<p class="eyebrow">Local projects</p>
-			<h2 id="projects-heading">Projects on this device</h2>
-		</div>
+		<h2 id="projects-heading">All Projects</h2>
 		<button class="secondary refresh" type="button" onclick={loadProjects} disabled={isLoading}>
 			Refresh
 		</button>
@@ -166,25 +326,20 @@
 	{:else if projects.length === 0}
 		<div class="empty card">
 			<h3>No projects yet</h3>
-			<p class="muted">Create your first project to verify local storage is ready.</p>
+			<p class="muted">Create one to start.</p>
 		</div>
 	{:else}
 		<ul aria-label="Project list">
 			{#each projects as project (project.id)}
 				<li class="project-card card">
-					<div>
+					<div class="project-summary">
 						<h3>{project.name}</h3>
-						<p class="muted">Updated {formatDate(project.updatedAt)}</p>
-						<dl>
-							<div>
-								<dt>Next item</dt>
-								<dd>{project.nextItemSequence}</dd>
-							</div>
-							<div>
-								<dt>Last room</dt>
-								<dd>{project.lastRoom ?? 'None'}</dd>
-							</div>
-						</dl>
+						<p class="muted">{projectMeta[project.id]?.itemCount ?? 0} saved items</p>
+						{#if projectMeta[project.id]?.reminder}
+							<p class="backup-reminder" role="status">
+								{projectMeta[project.id]?.reminder?.message}
+							</p>
+						{/if}
 					</div>
 
 					<div class="project-actions">
@@ -197,7 +352,7 @@
 							onclick={() => handleExportProject(project)}
 							disabled={exportingProjectId === project.id || deletingProjectId === project.id}
 						>
-							{exportingProjectId === project.id ? 'Exporting…' : 'Export ZIP'}
+							{exportingProjectId === project.id ? 'Exporting…' : 'Export'}
 						</button>
 						<button
 							class="danger"
@@ -216,25 +371,20 @@
 
 <style>
 	.hero {
-		padding: 1.25rem 0 1rem;
+		padding: 1.2rem 0 1rem;
 	}
 
 	.hero h1 {
-		max-width: 11ch;
+		max-width: 10ch;
 		margin: 0;
-		font-size: clamp(2.35rem, 15vw, 4.8rem);
+		font-size: clamp(2.65rem, 16vw, 5.2rem);
+		font-weight: 700;
 		line-height: 0.9;
-		letter-spacing: -0.08em;
-	}
-
-	.hero .muted {
-		max-width: 38rem;
-		margin: 1rem 0 0;
-		font-size: 1.05rem;
-		line-height: 1.55;
+		letter-spacing: -0.095em;
 	}
 
 	.create-card,
+	.settings-card,
 	.empty,
 	.project-card {
 		padding: 1rem;
@@ -242,8 +392,42 @@
 
 	.create-card {
 		display: grid;
+		align-items: center;
 		gap: 1rem;
-		margin: 1.5rem 0;
+		margin: 1.35rem 0 0.9rem;
+		background: rgb(255 254 250 / 0.78);
+	}
+
+	.settings-card {
+		display: grid;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.settings-card p {
+		margin-bottom: 0;
+	}
+
+	.settings-grid,
+	.field,
+	.passcode-form {
+		display: grid;
+		gap: 0.7rem;
+	}
+
+	.field span,
+	.passcode-form label {
+		font-size: 0.9rem;
+		font-weight: 650;
+	}
+
+	.passcode-row {
+		display: grid;
+		gap: 0.65rem;
+	}
+
+	.disable-passcode {
+		width: 100%;
 	}
 
 	h2,
@@ -254,7 +438,8 @@
 
 	h2 {
 		margin-bottom: 0;
-		font-size: 1.25rem;
+		font-size: 1.2rem;
+		font-weight: 650;
 	}
 
 	form {
@@ -262,27 +447,8 @@
 		gap: 0.75rem;
 	}
 
-	label {
-		font-weight: 700;
-	}
-
-	.success,
-	.error {
-		border-radius: 1rem;
-		padding: 0.9rem 1rem;
-		font-weight: 700;
-	}
-
-	.success {
-		border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
-		background: var(--color-primary-soft);
-		color: var(--color-primary);
-	}
-
-	.error {
-		border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
-		background: var(--color-danger-soft);
-		color: var(--color-danger);
+	form button {
+		min-height: 50px;
 	}
 
 	.section-heading {
@@ -290,7 +456,7 @@
 		align-items: end;
 		justify-content: space-between;
 		gap: 1rem;
-		margin: 2rem 0 1rem;
+		margin: 1.8rem 0 0.9rem;
 	}
 
 	.refresh {
@@ -300,7 +466,7 @@
 
 	ul {
 		display: grid;
-		gap: 0.9rem;
+		gap: 0.85rem;
 		margin: 0;
 		padding: 0;
 		list-style: none;
@@ -312,39 +478,38 @@
 	}
 
 	.project-card h3 {
-		margin-bottom: 0.35rem;
-		font-size: 1.25rem;
+		margin-bottom: 0.25rem;
+		font-size: 1.18rem;
+		font-weight: 650;
 	}
 
-	dl {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.75rem;
-		margin: 1rem 0 0;
+	.project-summary {
+		display: grid;
+		gap: 0.35rem;
 	}
 
-	dl div {
-		min-width: 7rem;
-		border-radius: 0.9rem;
-		padding: 0.7rem 0.8rem;
-		background: var(--color-primary-soft);
+	.project-summary p {
+		margin-bottom: 0;
 	}
 
-	dt {
-		color: var(--color-muted);
-		font-size: 0.75rem;
-		font-weight: 800;
-		text-transform: uppercase;
-	}
-
-	dd {
-		margin: 0.2rem 0 0;
-		font-weight: 800;
+	.backup-reminder {
+		border: 1px solid color-mix(in srgb, var(--color-danger) 18%, transparent);
+		border-radius: 1rem;
+		padding: 0.7rem;
+		background: rgb(247 223 226 / 0.62);
+		color: var(--color-danger);
+		font-size: 0.82rem;
+		font-weight: 650;
 	}
 
 	.project-actions {
 		display: grid;
-		gap: 0.7rem;
+		gap: 0.65rem;
+	}
+
+	.project-actions .button,
+	.project-actions button {
+		width: 100%;
 	}
 
 	.empty {
@@ -352,14 +517,15 @@
 	}
 
 	.empty h3 {
-		margin-bottom: 0.4rem;
+		margin-bottom: 0.35rem;
+		font-weight: 650;
 	}
 
 	@media (min-width: 700px) {
 		.create-card {
 			grid-template-columns: 0.8fr 1.2fr;
-			align-items: end;
-			padding: 1.25rem;
+			align-items: center;
+			padding: 1.15rem;
 		}
 
 		form {
@@ -367,8 +533,12 @@
 			align-items: end;
 		}
 
-		label {
-			grid-column: 1 / -1;
+		.settings-card {
+			grid-template-columns: 0.8fr 1.2fr;
+		}
+
+		.passcode-row {
+			grid-template-columns: 1fr auto;
 		}
 
 		.project-card {
@@ -377,7 +547,7 @@
 		}
 
 		.project-actions {
-			grid-template-columns: auto auto auto;
+			grid-template-columns: repeat(3, 6.2rem);
 		}
 	}
 </style>

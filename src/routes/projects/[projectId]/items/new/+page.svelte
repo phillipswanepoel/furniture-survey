@@ -412,20 +412,19 @@
 	<section class="card state-card">
 		<p class="eyebrow">Not found</p>
 		<h1>Project not found</h1>
-		<p class="muted">This project may have been deleted from this device.</p>
+		<p class="muted">It may have been deleted.</p>
 		<a class="button" href={resolve('/')}>Back to projects</a>
 	</section>
 {:else}
 	<section class="item-hero">
-		<p class="eyebrow">Item entry</p>
 		<h1>Add item</h1>
-		<p class="muted">Project: {project.name}</p>
+		<p class="muted">{project.name}</p>
 	</section>
 
 	{#if recoveredDraft}
 		<section class="card notice-card" role="status">
-			<strong>Recovered draft</strong>
-			<span>Continue editing this locally autosaved item, or discard it below.</span>
+			<strong>Draft recovered</strong>
+			<span>Continue or discard.</span>
 		</section>
 	{/if}
 
@@ -437,24 +436,11 @@
 		<p class="error" role="alert">{errorMessage}</p>
 	{/if}
 
-	<section class="card form-card" aria-labelledby="item-form-heading">
-		<div class="form-heading">
-			<div>
-				<p class="eyebrow">Draft</p>
-				<h2 id="item-form-heading">Item details</h2>
-				<p class="muted">Draft fields autosave on this device before final save.</p>
-			</div>
-			<div class="number-preview" aria-label="Item number preview">
-				<small>Item number</small>
-				<strong>{itemNumberPreview}</strong>
-			</div>
-		</div>
-
+	<section class="card form-card" aria-label="Add item form">
 		<section class="photo-card" aria-labelledby="photos-heading">
 			<div class="photo-heading">
 				<div>
 					<h3 id="photos-heading">Photos</h3>
-					<p class="muted">Take or add multiple photos. Images compress before local storage.</p>
 				</div>
 				<strong>{photoPreviews.length} photo{photoPreviews.length === 1 ? '' : 's'}</strong>
 			</div>
@@ -493,12 +479,12 @@
 					for="library-photos"
 					aria-disabled={photoControlsDisabled ? 'true' : undefined}
 				>
-					Add from library
+					Library
 				</label>
 			</div>
 
 			{#if photoPreviews.length === 0}
-				<p class="empty-photos">No photos added yet.</p>
+				<p class="empty-photos">No photos</p>
 			{:else}
 				<ul class="photo-grid" aria-label="Draft photos">
 					{#each photoPreviews as preview (preview.image.id)}
@@ -523,6 +509,11 @@
 		</section>
 
 		<form onsubmit={handleSave}>
+			<div class="number-preview" aria-label="Item number preview">
+				<small>Number</small>
+				<strong>{itemNumberPreview}</strong>
+			</div>
+
 			<div class="field">
 				<label for="item-name">Item name <span aria-hidden="true">*</span></label>
 				<input
@@ -627,7 +618,7 @@
 				<textarea
 					id="notes"
 					bind:value={notes}
-					placeholder="Condition, location notes, special handling…"
+					placeholder="Condition, location…"
 					oninput={scheduleAutosave}
 				></textarea>
 			</div>
@@ -639,7 +630,7 @@
 					{:else if lastSavedAt}
 						Draft saved {formatTime(lastSavedAt)}
 					{:else}
-						Draft autosaves locally.
+						Autosave on
 					{/if}
 				</p>
 
@@ -657,7 +648,7 @@
 						onclick={handleSaveAndAddNext}
 						disabled={!canSave}
 					>
-						Save & Add Next
+						Save + next
 					</button>
 					<button
 						class="danger"
@@ -674,29 +665,22 @@
 {/if}
 
 <style>
-	.back-link {
-		display: inline-flex;
-		margin: 0.25rem 0 1rem;
-		color: var(--color-muted);
-		font-weight: 800;
-		text-decoration: none;
-	}
-
 	.item-hero {
-		padding: 0.75rem 0 1.25rem;
+		padding: 0.7rem 0 1.15rem;
 	}
 
 	.item-hero h1,
 	.state-card h1 {
 		max-width: 12ch;
 		margin: 0;
-		font-size: clamp(2.4rem, 14vw, 4.5rem);
-		line-height: 0.95;
-		letter-spacing: -0.07em;
+		font-size: clamp(2.45rem, 14vw, 4.8rem);
+		font-weight: 700;
+		line-height: 0.92;
+		letter-spacing: -0.09em;
 	}
 
 	.item-hero .muted {
-		margin-top: 0.8rem;
+		margin-top: 0.75rem;
 	}
 
 	.state-card,
@@ -709,26 +693,7 @@
 		display: grid;
 		gap: 0.25rem;
 		margin-bottom: 1rem;
-		background: var(--color-primary-soft);
-	}
-
-	.success,
-	.error {
-		border-radius: 1rem;
-		padding: 0.9rem 1rem;
-		font-weight: 800;
-	}
-
-	.success {
-		border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
-		background: var(--color-primary-soft);
-		color: var(--color-primary);
-	}
-
-	.error {
-		border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
-		background: var(--color-danger-soft);
-		color: var(--color-danger);
+		background: linear-gradient(135deg, rgb(220 239 240 / 0.76), rgb(255 254 250 / 0.54));
 	}
 
 	.form-card {
@@ -736,57 +701,54 @@
 		gap: 1rem;
 	}
 
-	.form-heading {
-		display: grid;
-		gap: 1rem;
-	}
-
-	h2,
 	h3,
 	p {
 		margin-top: 0;
 	}
 
-	h2,
 	h3 {
 		margin-bottom: 0.35rem;
+		font-weight: 650;
 	}
 
 	.number-preview {
 		display: grid;
 		gap: 0.25rem;
-		border-radius: 1rem;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
+		border-radius: 1.25rem;
 		padding: 0.85rem;
-		background: var(--color-primary-soft);
+		background: rgb(255 254 250 / 0.52);
 	}
 
 	.number-preview small {
 		color: var(--color-muted);
-		font-size: 0.75rem;
-		font-weight: 800;
+		font-size: 0.68rem;
+		font-weight: 650;
 		text-transform: uppercase;
 	}
 
 	.number-preview strong {
-		font-size: 1.25rem;
+		font-size: 1.15rem;
+		font-weight: 650;
 	}
 
 	.photo-card {
 		display: grid;
-		gap: 0.9rem;
-		border-radius: 1rem;
+		gap: 0.85rem;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
+		border-radius: 1.35rem;
 		padding: 0.85rem;
-		background: color-mix(in srgb, var(--color-primary-soft) 70%, transparent);
+		background: linear-gradient(135deg, rgb(220 239 240 / 0.58), rgb(241 224 236 / 0.42));
 	}
 
 	.photo-heading {
 		display: grid;
-		gap: 0.5rem;
+		gap: 0.45rem;
 	}
 
 	.photo-heading strong {
 		color: var(--color-primary);
-		font-weight: 900;
+		font-weight: 650;
 	}
 
 	.photo-actions {
@@ -811,11 +773,11 @@
 
 	.empty-photos {
 		margin: 0;
-		border: 1px dashed var(--color-border);
-		border-radius: 1rem;
+		border: 1px dashed color-mix(in srgb, var(--color-primary) 20%, transparent);
+		border-radius: 1.15rem;
 		padding: 1rem;
 		color: var(--color-muted);
-		font-weight: 800;
+		font-weight: 650;
 		text-align: center;
 	}
 
@@ -832,15 +794,15 @@
 		display: grid;
 		gap: 0.55rem;
 		border: 1px solid var(--color-border);
-		border-radius: 1rem;
+		border-radius: 1.15rem;
 		padding: 0.55rem;
-		background: var(--color-surface-strong);
+		background: rgb(255 254 250 / 0.58);
 	}
 
 	.photo-grid img {
 		width: 100%;
 		aspect-ratio: 1;
-		border-radius: 0.75rem;
+		border-radius: 0.9rem;
 		object-fit: cover;
 		background: var(--color-primary-soft);
 	}
@@ -853,7 +815,7 @@
 	.photo-grid small {
 		margin-top: 0.15rem;
 		color: var(--color-muted);
-		font-weight: 700;
+		font-weight: 600;
 	}
 
 	.remove-photo {
@@ -869,7 +831,8 @@
 	}
 
 	label {
-		font-weight: 800;
+		font-size: 0.9rem;
+		font-weight: 650;
 	}
 
 	label span,
@@ -882,8 +845,8 @@
 	.validation-hint,
 	.autosave-status {
 		margin: 0;
-		font-size: 0.85rem;
-		font-weight: 700;
+		font-size: 0.82rem;
+		font-weight: 600;
 	}
 
 	.autosave-status {
@@ -918,13 +881,8 @@
 	}
 
 	@media (min-width: 700px) {
-		.form-heading {
-			grid-template-columns: 1fr auto;
-			align-items: start;
-		}
-
 		.number-preview {
-			min-width: 13rem;
+			max-width: 13rem;
 		}
 
 		.photo-heading,
